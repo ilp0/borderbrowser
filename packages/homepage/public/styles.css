@@ -277,3 +277,97 @@ input:focus {
   background: var(--soft); padding: 1px 5px; border-radius: 4px;
   font-family: ui-monospace, SF Mono, Menlo, Consolas, monospace;
 }
+
+/* --------- Same-story page --------- */
+.story-hero {
+  padding: 24px 0 8px;
+  display: flex; flex-direction: column; gap: 10px;
+}
+.story-tag {
+  align-self: flex-start;
+  font-size: 11px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-radius: 999px;
+  padding: 4px 10px;
+}
+.story-hero h1 {
+  font-size: clamp(26px, 4vw, 36px);
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  font-weight: 800;
+  max-width: 22ch;
+}
+.story-hero p.lede {
+  font-size: clamp(14px, 1.5vw, 16px);
+  color: var(--muted);
+  max-width: 64ch;
+}
+.story-meta {
+  display: flex; flex-wrap: wrap; gap: 6px;
+  font-size: 13px; color: var(--muted);
+  margin-top: 4px;
+}
+.story-meta .story-event { color: var(--text); font-weight: 600; }
+.story-meta .dot { color: #c0c0c8; }
+.story-synopsis {
+  font-size: 14px; color: var(--muted);
+  max-width: 72ch;
+  border-left: 3px solid var(--soft);
+  padding: 4px 0 4px 12px;
+  margin-top: 4px;
+}
+
+.story-grid {
+  margin-top: 20px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 14px;
+}
+.story-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 16px;
+  display: flex; flex-direction: column; gap: 10px;
+  transition: border-color 120ms, box-shadow 120ms;
+}
+.story-card:hover {
+  border-color: #cdd2dc;
+  box-shadow: var(--shadow-md);
+}
+.story-card-head {
+  display: flex; align-items: center; gap: 10px;
+}
+.story-card-meta {
+  display: flex; flex-direction: column; gap: 1px; min-width: 0;
+}
+.story-card-source {
+  font-weight: 700; font-size: 14px; letter-spacing: -0.005em;
+}
+.story-card-country {
+  font-size: 12px; color: var(--muted);
+}
+.story-card-headline {
+  font-size: 15px; line-height: 1.35; letter-spacing: -0.005em;
+  font-weight: 700;
+}
+.story-card-translation {
+  font-size: 13px; color: var(--muted); font-style: italic;
+}
+.story-card-excerpt {
+  font-size: 13px; color: var(--text); line-height: 1.5;
+}
+.story-card-link {
+  margin-top: auto;
+  font-size: 13px; font-weight: 600;
+  align-self: flex-start;
+}
+.story-disclaimer {
+  margin-top: 28px;
+  font-size: 12px; color: var(--muted);
+  border-top: 1px solid var(--line);
+  padding-top: 14px;
+  max-width: 72ch;
+}
