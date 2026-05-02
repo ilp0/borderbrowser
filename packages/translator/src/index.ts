@@ -8,6 +8,7 @@ export type { TranslateOptions, TranslateResult } from "./types.ts";
 export { encodeChildren, decodeText } from "./placeholders.ts";
 export { extractUnits } from "./extract.ts";
 export { translateUnits, DEFAULT_MODEL } from "./translate.ts";
+export { isRtl } from "./rtl.ts";
 
 /**
  * Translate a full HTML document.
