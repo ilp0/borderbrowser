@@ -33,6 +33,7 @@ export async function translateHtml(
         inputTokens: 0,
         outputTokens: 0,
         cachedInputTokens: 0,
+        contextOverlapChars: 0,
         elapsedMs: Date.now() - start,
       },
     };
@@ -57,6 +58,7 @@ export async function translateHtml(
       inputTokens: stats.inputTokens,
       outputTokens: stats.outputTokens,
       cachedInputTokens: stats.cachedInputTokens,
+      contextOverlapChars: stats.contextOverlapChars,
       elapsedMs: Date.now() - start,
     },
   };
