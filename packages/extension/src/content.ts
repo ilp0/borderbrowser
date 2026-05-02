@@ -21,6 +21,7 @@ import {
   putCached,
 } from "./lib/cache.ts";
 import { getRuntimeConfig, setConfig } from "./lib/config.ts";
+import { attachPeek, detachAll as detachPeek } from "./lib/hover-peek.ts";
 import {
   type TabRequest,
   type TabResponse,
@@ -230,6 +231,7 @@ async function translatePage(usePremium: boolean): Promise<void> {
       translatedElements.add(el);
     }
     pageState = "translated";
+    if (cfg.hoverPeek) attachAllPeeks();
     lastStats = stats;
     debug("done", { units: units.length, elapsedMs, applied: updates.length });
 
@@ -269,6 +271,22 @@ function showState(s: "original" | "translated"): void {
     else el.innerHTML = entry.translated;
   }
   pageState = s;
+  // Peek would point at original-shown text, so detach on the way back.
+  if (s === "original") {
+    detachPeek(translatedElements);
+  } else {
+    void (async () => {
+      const cfg = await getRuntimeConfig();
+      if (cfg.hoverPeek) attachAllPeeks();
+    })();
+  }
+}
+
+function attachAllPeeks(): void {
+  for (const el of translatedElements) {
+    const entry = cache.get(el);
+    if (entry) attachPeek(el, entry.original);
+  }
 }
 
 // ---------- Overlay (lives in a Shadow DOM so the host page's CSS can't touch it) ----------
