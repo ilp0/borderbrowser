@@ -7,6 +7,13 @@
  * `type: "module"` in the manifest because it imports translateUnits which
  * pulls in the OpenAI SDK; esbuild bundles them all together so no actual
  * cross-file imports happen at runtime.
+ *
+ * Outputs two parallel builds:
+ *   - dist/          → Chrome MV3 (manifest.json)
+ *   - dist-firefox/  → Firefox MV3 (manifest.firefox.json renamed to manifest.json)
+ *
+ * Same JS bundles in both — webextension-polyfill handles the runtime
+ * namespace differences. Only the manifest shape differs.
  */
 import * as esbuild from "esbuild";
 import { copyFile, cp, mkdir } from "node:fs/promises";
@@ -14,7 +21,11 @@ import { existsSync } from "node:fs";
 import { dirname } from "node:path";
 
 const watch = process.argv.includes("--watch");
-const outdir = "dist";
+
+const targets = [
+  { outdir: "dist", manifest: "manifest.json" },
+  { outdir: "dist-firefox", manifest: "manifest.firefox.json" },
+];
 
 const entryPoints = {
   background: "src/background.ts",
@@ -23,8 +34,8 @@ const entryPoints = {
   "options/main": "src/options/main.ts",
 };
 
-/** @type {import("esbuild").BuildOptions} */
-const config = {
+/** @type {(outdir: string) => import("esbuild").BuildOptions} */
+const configFor = (outdir) => ({
   entryPoints,
   bundle: true,
   platform: "browser",
@@ -36,11 +47,11 @@ const config = {
   define: {
     "process.env.NODE_ENV": JSON.stringify(process.env.NODE_ENV ?? "production"),
   },
-};
+});
 
-async function copyAssets() {
+async function copyAssets(outdir, manifestSrc) {
   const assets = [
-    ["manifest.json", `${outdir}/manifest.json`],
+    [manifestSrc, `${outdir}/manifest.json`],
     ["src/popup/index.html", `${outdir}/popup/index.html`],
     ["src/popup/style.css", `${outdir}/popup/style.css`],
     ["src/options/index.html", `${outdir}/options/index.html`],
@@ -56,19 +67,25 @@ async function copyAssets() {
   }
 }
 
-async function main() {
+async function buildTarget({ outdir, manifest }) {
   await mkdir(outdir, { recursive: true });
+  const config = configFor(outdir);
 
   if (watch) {
     const ctx = await esbuild.context(config);
     await ctx.watch();
-    await copyAssets();
+    await copyAssets(outdir, manifest);
     console.log(`[bb] watching ${Object.keys(entryPoints).length} entries → ${outdir}/`);
   } else {
     await esbuild.build(config);
-    await copyAssets();
+    await copyAssets(outdir, manifest);
     console.log(`[bb] built ${Object.keys(entryPoints).length} entries → ${outdir}/`);
   }
+}
+
+async function main() {
+  // Targets are independent — build in parallel.
+  await Promise.all(targets.map(buildTarget));
 }
 
 main().catch((err) => {

@@ -4,10 +4,12 @@ import { decodeText } from "./placeholders.ts";
 import { translateUnits } from "./translate.ts";
 import type { TranslateOptions, TranslateResult } from "./types.ts";
 
-export type { TranslateOptions, TranslateResult } from "./types.ts";
+export type { TranslateOptions, TranslateResult, LocalizeOptions, UnitSystem } from "./types.ts";
 export { encodeChildren, decodeText } from "./placeholders.ts";
 export { extractUnits } from "./extract.ts";
 export { translateUnits, DEFAULT_MODEL } from "./translate.ts";
+export { localizeText } from "./localize.ts";
+export { isRtl } from "./rtl.ts";
 
 /**
  * Translate a full HTML document.
@@ -33,6 +35,7 @@ export async function translateHtml(
         inputTokens: 0,
         outputTokens: 0,
         cachedInputTokens: 0,
+        contextOverlapChars: 0,
         elapsedMs: Date.now() - start,
       },
     };
@@ -57,6 +60,7 @@ export async function translateHtml(
       inputTokens: stats.inputTokens,
       outputTokens: stats.outputTokens,
       cachedInputTokens: stats.cachedInputTokens,
+      contextOverlapChars: stats.contextOverlapChars,
       elapsedMs: Date.now() - start,
     },
   };

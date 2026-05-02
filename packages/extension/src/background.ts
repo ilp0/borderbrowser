@@ -10,6 +10,7 @@
  * every message handler reads config fresh.
  */
 
+import "./lib/browser.ts"; // Cross-browser polyfill (Chrome + Firefox MV3).
 import { translateUnits } from "@borderbrowser/translator/browser";
 import {
   getConfig,
@@ -18,12 +19,49 @@ import {
   setConfig,
   setSecrets,
 } from "./lib/config.ts";
-import type { BgRequest, BgResponse } from "./lib/messages.ts";
+import {
+  type BgRequest,
+  type BgResponse,
+  type TabRequest,
+  sendToTab,
+} from "./lib/messages.ts";
 
 chrome.runtime.onInstalled.addListener(async (details) => {
   if (details.reason === "install") {
     // Open options page on first install so the user can paste their API key.
     chrome.runtime.openOptionsPage();
+  }
+});
+
+/**
+ * Keyboard shortcuts wired in `manifest.json` `commands`. Users can rebind
+ * these at chrome://extensions/shortcuts. We forward each command to the
+ * active tab via the same IPC the popup uses, so the underlying handlers stay
+ * single-sourced in the content script.
+ */
+chrome.commands.onCommand.addListener(async (command) => {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (tab?.id === undefined) return;
+
+  let req: TabRequest | undefined;
+  switch (command) {
+    case "translate-page":
+      req = { kind: "tab.translatePage" };
+      break;
+    case "toggle-original":
+      req = { kind: "tab.toggleOriginal" };
+      break;
+    case "premium-retry":
+      req = { kind: "tab.translatePage", usePremium: true };
+      break;
+  }
+  if (!req) return;
+
+  try {
+    await sendToTab(tab.id, req);
+  } catch {
+    // Content script not present on this URL (chrome://, file://, web store,
+    // etc.) — silently ignore so the shortcut is a no-op there.
   }
 });
 
