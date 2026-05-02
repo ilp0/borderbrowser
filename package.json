@@ -8,9 +8,12 @@
   ],
   "scripts": {
     "translator": "npm run -w @borderbrowser/translator",
-    "test": "npm run -ws --if-present test"
+    "test": "npm run -ws --if-present test",
+    "e2e": "playwright test",
+    "e2e:install": "playwright install chromium"
   },
   "devDependencies": {
+    "@playwright/test": "^1.49.1",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2"
   },
