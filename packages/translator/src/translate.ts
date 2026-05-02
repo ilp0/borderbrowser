@@ -1,5 +1,6 @@
 import OpenAI from "openai";
 import { z } from "zod";
+import { localizeText } from "./localize.ts";
 import type { TranslateOptions, TranslationUnit } from "./types.ts";
 
 export const DEFAULT_MODEL = "anthropic/claude-haiku-4.5";
@@ -107,6 +108,15 @@ export async function translateUnits(
       }
     });
     await Promise.all(workers);
+  }
+
+  // Post-translation localization pass: runs on translated text BEFORE the
+  // caller decodes placeholders. Skipped entirely when no localize options
+  // were provided (per spec).
+  if (options.localize !== undefined) {
+    for (const [id, text] of translated) {
+      translated.set(id, localizeText(text, options.targetLang, options.localize));
+    }
   }
 
   return { translated, stats };

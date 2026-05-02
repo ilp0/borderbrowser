@@ -30,7 +30,7 @@ const totalSites = countries.reduce((n, c) => n + c.sites.length, 0);
 
   <div class="country-grid">
     {countries.map((c) => (
-      <article class="country-card">
+      <article class="country-card" id={`country-${c.code}`}>
         <header class="country-head">
           <span class="flag" aria-hidden="true">{c.flag}</span>
           <div class="country-meta">
