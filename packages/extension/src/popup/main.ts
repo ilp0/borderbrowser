@@ -19,6 +19,7 @@ const els = {
   showOrig: $<HTMLButtonElement>("#show-orig"),
   showTrans: $<HTMLButtonElement>("#show-trans"),
   premiumBtn: $<HTMLButtonElement>("#premium-btn"),
+  readingBtn: $<HTMLButtonElement>("#reading-mode-btn"),
   stats: $<HTMLDivElement>("#stats"),
   openOptions: $<HTMLAnchorElement>("#open-options"),
 };
@@ -48,6 +49,16 @@ async function refresh(): Promise<void> {
   ]);
 
   els.lang.textContent = config.targetLang;
+
+  if (status) {
+    els.readingBtn.hidden = false;
+    els.readingBtn.textContent = status.readingMode
+      ? "Disable reading mode"
+      : "Enable reading mode";
+    els.readingBtn.classList.toggle("active", status.readingMode);
+  } else {
+    els.readingBtn.hidden = true;
+  }
 
   if (!secrets.apiKey) {
     els.status.textContent = "Set your API key in Settings to begin.";
@@ -122,6 +133,10 @@ els.showOrig.addEventListener("click", () =>
 
 els.showTrans.addEventListener("click", () =>
   withTab((id) => sendToTab(id, { kind: "tab.showTranslated" })),
+);
+
+els.readingBtn.addEventListener("click", () =>
+  withTab((id) => sendToTab(id, { kind: "tab.toggleReadingMode" })),
 );
 
 els.openOptions.addEventListener("click", (e) => {
