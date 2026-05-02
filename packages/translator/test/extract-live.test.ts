@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { JSDOM } from "jsdom";
-import { extractFromDom } from "../src/browser/extract-live.ts";
+import { extractFromDom, extractFromNode } from "../src/browser/extract-live.ts";
 import { decodeText } from "../src/placeholders.ts";
 
 /**
@@ -112,5 +112,45 @@ describe("extractFromDom (live DOM)", () => {
     const translated = "Tästä [1]lisää[/1]";
     const html = decodeText(translated, u.placeholders);
     assert.equal(html, `Tästä <a href="/x">lisää</a>`);
+  });
+});
+
+describe("extractFromNode (single-element entry)", () => {
+  it("treats a leaf-block element passed directly as a unit", () => {
+    // `extractFromDom` walks `root.childNodes`, so the SPA pipeline needs
+    // an entry point that considers the node itself a candidate.
+    const { root } = dom(`<body><p id="x">Bonjour le monde</p></body>`);
+    const p = root.querySelector("#x")!;
+    const got = extractFromNode(p);
+    assert.equal(got.units.length, 1);
+    assert.equal(got.units[0]!.kind, "p");
+    assert.equal(got.units[0]!.text, "Bonjour le monde");
+    assert.equal(got.refs.get(got.units[0]!.id), p);
+  });
+
+  it("walks into a wrapper element to its leaf-blocks", () => {
+    const { root } = dom(
+      `<body><div id="x"><h2>Titre</h2><p>Texte.</p></div></body>`,
+    );
+    const wrapper = root.querySelector("#x")!;
+    const got = extractFromNode(wrapper);
+    assert.deepEqual(
+      got.units.map((u) => ({ kind: u.kind, text: u.text })),
+      [
+        { kind: "h2", text: "Titre" },
+        { kind: "p", text: "Texte." },
+      ],
+    );
+  });
+
+  it("threads ids forward via startId for batched extraction", () => {
+    const { root } = dom(`<body><p id="a">Un</p><p id="b">Deux</p></body>`);
+    const a = root.querySelector("#a")!;
+    const b = root.querySelector("#b")!;
+    const first = extractFromNode(a, 1);
+    const second = extractFromNode(b, first.nextId);
+    assert.equal(first.units[0]!.id, 1);
+    assert.equal(second.units[0]!.id, 2);
+    assert.equal(second.nextId, 3);
   });
 });

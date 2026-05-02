@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <title>SPA fixture</title>
+    <style>
+      body { font: 14px -apple-system, system-ui, sans-serif; padding: 24px; max-width: 720px; }
+      .feed > p { margin: 8px 0; }
+      button { padding: 8px 14px; }
+    </style>
+  </head>
+  <body>
+    <h1>Journal local</h1>
+    <p id="bb-spa-initial">Bonjour le monde.</p>
+    <button id="bb-spa-add" type="button">Ajouter un paragraphe</button>
+    <section class="feed" id="bb-spa-feed"></section>
+
+    <script>
+      // Feed of French strings the button cycles through. The MutationObserver
+      // pipeline must pick each insertion up via subtree=true on document.body.
+      const FRENCH = [
+        "Le ciel est bleu aujourd'hui.",
+        "Une nouvelle histoire vient d'arriver.",
+        "Les commentaires se chargent en bas.",
+        "Bienvenue sur la page suivante.",
+      ];
+      let i = 0;
+      document.getElementById("bb-spa-add").addEventListener("click", () => {
+        const p = document.createElement("p");
+        p.className = "bb-spa-added";
+        p.textContent = FRENCH[i % FRENCH.length];
+        i += 1;
+        document.getElementById("bb-spa-feed").appendChild(p);
+      });
+    </script>
+
+    <!--
+      Standalone harness for the Chrome MCP recipe. Loads the bundled SPA
+      observer (no extension install required) and wires it to a stub
+      translator that uppercases the input. Activated by `?test=spa` so the
+      file remains a clean fixture for any future Playwright pass.
+    -->
+    <script src="./mutation-observer.bundle.js"></script>
+    <script>
+      if (new URLSearchParams(location.search).has("test")) {
+        let busy = false;
+        // Test hook: tests can override the artificial delay (in ms) the
+        // stub translator awaits before applying. Used to simulate a real
+        // bg round-trip and verify mutations during the await aren't lost.
+        window.__bbStubDelayMs = 0;
+        // Stub translator: just uppercase the unit text. Mirrors the contract
+        // of `translateBatch` in content.ts (snapshot, encode-decode, atomic
+        // apply with `data-bb-translated="1"`).
+        async function runBatch(extract) {
+          busy = true;
+          try {
+            await new Promise((r) => setTimeout(r, window.__bbStubDelayMs));
+            // Marker BEFORE innerHTML so the observer's ancestor filter
+            // catches our own writes synchronously. Mirrors `applyTranslated`.
+            for (const u of extract.units) {
+              const el = extract.refs.get(u.id);
+              if (!el) continue;
+              el.setAttribute("data-bb-translated", "1");
+              el.innerHTML = u.text.toUpperCase();
+            }
+          } finally {
+            busy = false;
+          }
+        }
+        // Mark the initial paragraph as already-translated so the observer
+        // ignores it (mirrors the production initial-pass behavior).
+        for (const el of document.querySelectorAll("h1, #bb-spa-initial")) {
+          el.setAttribute("data-bb-translated", "1");
+        }
+        __bbObserver.startSpaObserver({
+          isBusy: () => busy,
+          runBatch,
+          debounceMs: 80,
+        });
+        window.__bbObserverReady = true;
+      }
+    </script>
+  </body>
+</html>

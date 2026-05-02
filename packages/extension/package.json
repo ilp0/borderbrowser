@@ -6,7 +6,8 @@
   "scripts": {
     "build": "node build.mjs",
     "dev": "node build.mjs --watch",
-    "clean": "rimraf dist"
+    "clean": "rimraf dist",
+    "test:e2e": "node build.mjs && esbuild src/lib/mutation-observer.ts --bundle --format=iife --global-name=__bbObserver --platform=browser --target=chrome120 --outfile=e2e/fixtures/mutation-observer.bundle.js && node --test e2e/spa-jsdom.test.mjs"
   },
   "dependencies": {
     "@borderbrowser/translator": "*"
@@ -14,6 +15,7 @@
   "devDependencies": {
     "@types/chrome": "^0.0.287",
     "esbuild": "^0.24.0",
+    "jsdom": "^25.0.1",
     "rimraf": "^6.0.1"
   }
 }

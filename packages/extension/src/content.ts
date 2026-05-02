@@ -14,6 +14,10 @@ import {
   decodeText,
   extractFromDom,
 } from "@borderbrowser/translator/browser/dom";
+import type {
+  LiveExtractResult,
+  TranslationUnit,
+} from "@borderbrowser/translator/browser/dom";
 import { getRuntimeConfig, setConfig } from "./lib/config.ts";
 import {
   type TabRequest,
@@ -21,6 +25,10 @@ import {
   type TabStatus,
   sendToBg,
 } from "./lib/messages.ts";
+import {
+  TRANSLATED_ATTR,
+  startSpaObserver,
+} from "./lib/mutation-observer.ts";
 
 type CacheEntry = { original: string; translated: string };
 const cache: WeakMap<Element, CacheEntry> = new WeakMap();
@@ -152,26 +160,11 @@ async function translatePage(usePremium: boolean): Promise<void> {
       return;
     }
 
-    const translations = new Map(response.translations.map((t) => [t.id, t.text]));
-
     // Pre-compute everything BEFORE we touch the DOM, so the swap is atomic.
-    const updates: { el: Element; html: string }[] = [];
-    for (const u of units) {
-      const t = translations.get(u.id);
-      if (t === undefined) continue;
-      const el = refs.get(u.id);
-      if (!el) continue;
-      const html = decodeText(t, u.placeholders);
-      updates.push({ el, html });
-    }
+    const updates = composeUpdates(units, refs, response.translations);
 
     await nextFrame();
-    for (const { el, html } of updates) {
-      const entry = cache.get(el);
-      if (entry) entry.translated = html;
-      el.innerHTML = html;
-      translatedElements.add(el);
-    }
+    for (const { el, html } of updates) applyTranslated(el, html);
     pageState = "translated";
     lastStats = {
       units: units.length,
@@ -182,6 +175,15 @@ async function translatePage(usePremium: boolean): Promise<void> {
     debug("done", { units: units.length, elapsedMs, applied: updates.length });
 
     hideOverlay();
+
+    // SPA pipeline: now that the initial swap has landed, watch for
+    // dynamically-inserted content (route changes, infinite scroll, lazy
+    // comments) and translate each batch atomically.
+    startSpaObserver({
+      isBusy: () => busy,
+      runBatch: translateBatch,
+      onDebug: debug,
+    });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     const stack = err instanceof Error ? err.stack : undefined;
@@ -193,6 +195,98 @@ async function translatePage(usePremium: boolean): Promise<void> {
   } finally {
     busy = false;
   }
+}
+
+/**
+ * Translate a single batch of newly-extracted units (from the SPA observer)
+ * and apply the result as one atomic swap. Same shape as `translatePage`
+ * but without the overlay, language guard, or fresh extraction — those are
+ * the observer's job before it calls us.
+ */
+async function translateBatch(extract: LiveExtractResult): Promise<void> {
+  if (busy) return;
+  if (extract.units.length === 0) return;
+  busy = true;
+  try {
+    const cfg = await getRuntimeConfig();
+    if (!cfg.apiKey) return;
+
+    // Snapshot originals so toggling to original works for incremental nodes.
+    for (const u of extract.units) {
+      const el = extract.refs.get(u.id);
+      if (!el) continue;
+      if (!cache.has(el)) cache.set(el, { original: el.innerHTML, translated: "" });
+    }
+
+    const startMs = performance.now();
+    const response = await sendToBg({
+      kind: "bg.translate",
+      targetLang: cfg.targetLang,
+      model: cfg.model,
+      baseUrl: cfg.baseUrl,
+      apiKey: cfg.apiKey,
+      units: extract.units.map((u) => ({ id: u.id, kind: u.kind, text: u.text })),
+    });
+    const elapsedMs = Math.round(performance.now() - startMs);
+
+    if (!response.ok || response.kind !== "bg.translateResult") {
+      const msg = response.kind === "error" ? response.message : "Batch translate failed.";
+      debug("spa.batch-error", { msg });
+      return;
+    }
+
+    const updates = composeUpdates(extract.units, extract.refs, response.translations);
+
+    await nextFrame();
+    for (const { el, html } of updates) {
+      // User may have toggled back to original between request and response;
+      // in that case cache the translation but leave the visible DOM alone.
+      // Next "Show translated" toggle picks these up via showState().
+      if (pageState === "translated") applyTranslated(el, html);
+      else cacheTranslated(el, html);
+    }
+    debug("spa.done", { units: extract.units.length, elapsedMs, applied: updates.length });
+  } catch (err) {
+    debug("spa.exception", { msg: err instanceof Error ? err.message : String(err) });
+  } finally {
+    busy = false;
+  }
+}
+
+/**
+ * Decode the bg response into per-element HTML updates. Pulled out so the
+ * initial-page and SPA-batch paths share one decoder loop and can swap them
+ * in one synchronous DOM-write loop.
+ */
+function composeUpdates(
+  units: TranslationUnit[],
+  refs: Map<number, Element>,
+  translations: { id: number; text: string }[],
+): { el: Element; html: string }[] {
+  const byId = new Map(translations.map((t) => [t.id, t.text]));
+  const out: { el: Element; html: string }[] = [];
+  for (const u of units) {
+    const t = byId.get(u.id);
+    if (t === undefined) continue;
+    const el = refs.get(u.id);
+    if (!el) continue;
+    out.push({ el, html: decodeText(t, u.placeholders) });
+  }
+  return out;
+}
+
+function cacheTranslated(el: Element, html: string): void {
+  const entry = cache.get(el);
+  if (entry) entry.translated = html;
+  translatedElements.add(el);
+}
+
+function applyTranslated(el: Element, html: string): void {
+  cacheTranslated(el, html);
+  // Marker BEFORE innerHTML so the SPA observer's ancestor walk filters out
+  // our own writes the moment the synchronous mutation records are queued.
+  el.setAttribute(TRANSLATED_ATTR, "1");
+  el.innerHTML = html;
 }
 
 /**
