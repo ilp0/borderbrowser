@@ -137,6 +137,7 @@ async function translatePage(usePremium: boolean): Promise<void> {
       baseUrl: cfg.baseUrl,
       apiKey: cfg.apiKey,
       units: units.map((u) => ({ id: u.id, kind: u.kind, text: u.text })),
+      glossary: cfg.glossary,
     });
 
     const elapsedMs = Math.round(performance.now() - startMs);

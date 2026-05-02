@@ -63,6 +63,7 @@ async function handleMessage(req: BgRequest): Promise<BgResponse> {
           apiKey: req.apiKey,
           baseUrl: req.baseUrl,
           siteName: "BorderBrowser",
+          glossary: req.glossary,
         },
       );
 

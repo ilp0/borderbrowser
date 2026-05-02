@@ -7,6 +7,7 @@
  * Responses always include a discriminating `ok` / `error` field.
  */
 
+import type { Glossary } from "@borderbrowser/translator";
 import type { Config, Secrets } from "./config.ts";
 
 export type SerializedUnit = {
@@ -23,6 +24,8 @@ export type BgRequest =
       baseUrl: string;
       apiKey: string;
       units: SerializedUnit[];
+      /** Optional `term → translation` map injected into the system prompt. */
+      glossary?: Glossary;
     }
   | { kind: "bg.getConfig" }
   | { kind: "bg.setConfig"; patch: Partial<Config> }

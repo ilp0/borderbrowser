@@ -23,3 +23,9 @@ export type {
   TranslateOptions,
   TranslateResult,
 } from "../types.ts";
+export type { Glossary } from "../glossary.ts";
+export {
+  formatGlossaryForPrompt,
+  parseGlossaryText,
+  formatGlossaryText,
+} from "../glossary.ts";
