@@ -1,0 +1,52 @@
+---
+export interface Props {
+  title: string;
+  description?: string;
+}
+const { title, description } = Astro.props;
+const fullTitle = title === "BorderBrowser"
+  ? "BorderBrowser — read the world's internet in your language"
+  : `${title} · BorderBrowser`;
+---
+
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content={description ?? "Browse the world's internet in your language. A curated directory of foreign-language news sites and a Chrome extension that translates them in real time."} />
+    <meta property="og:title" content={fullTitle} />
+    <meta property="og:type" content="website" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>{fullTitle}</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="inner">
+        <a href="/" class="brand">
+          <span class="brand-mark">⌘</span>
+          <span class="brand-text">BorderBrowser</span>
+        </a>
+        <nav>
+          <a href="/">Directory</a>
+          <a href="/install">Install</a>
+          <a href="/buy">Buy a key</a>
+          <a href="/topup">Top up</a>
+        </nav>
+      </div>
+    </header>
+    <main>
+      <slot />
+    </main>
+    <footer class="sitefoot">
+      <div class="inner">
+        <span>© BorderBrowser</span>
+        <span class="dot">·</span>
+        <a href="/install">Install</a>
+        <span class="dot">·</span>
+        <a href="https://github.com/" target="_blank" rel="noopener">Source</a>
+      </div>
+    </footer>
+  </body>
+</html>

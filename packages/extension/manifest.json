@@ -1,0 +1,41 @@
+{
+  "manifest_version": 3,
+  "name": "BorderBrowser",
+  "short_name": "BorderBrowser",
+  "version": "0.0.1",
+  "description": "Read foreign-language web pages in your language. Atomic-swap LLM translation that feels like a clean re-skin of the original site.",
+  "action": {
+    "default_title": "BorderBrowser",
+    "default_popup": "popup/index.html"
+  },
+  "options_ui": {
+    "page": "options/index.html",
+    "open_in_tab": true
+  },
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "permissions": [
+    "storage",
+    "activeTab",
+    "scripting",
+    "tabs"
+  ],
+  "host_permissions": [
+    "https://openrouter.ai/*",
+    "https://api.openai.com/*",
+    "https://api.anthropic.com/*"
+  ],
+  "optional_host_permissions": [
+    "https://*/*",
+    "http://*/*"
+  ]
+}

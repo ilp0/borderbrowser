@@ -1,0 +1,78 @@
+---
+import Base from "../layouts/Base.astro";
+---
+
+<Base title="Install BorderBrowser" description="Install the BorderBrowser browser extension and configure your API key.">
+  <section class="hero">
+    <h1>Install BorderBrowser</h1>
+    <p class="lede">
+      The extension translates foreign-language pages in your browser via an
+      OpenAI-compatible chat-completions endpoint. The translation never
+      passes through our servers — your browser talks to the LLM directly.
+    </p>
+  </section>
+
+  <div class="card">
+    <h2>1. Install the extension</h2>
+    <p>
+      Available for Chrome and Edge. Firefox build coming soon.
+    </p>
+    <div class="hero-cta">
+      <a class="btn primary" href="#" target="_blank" rel="noopener">
+        Add to Chrome (placeholder)
+      </a>
+      <a class="btn secondary" href="https://github.com/" target="_blank" rel="noopener">
+        Download .zip for manual install
+      </a>
+    </div>
+    <div class="note">
+      <strong>Manual (developer mode):</strong> unzip, open <code>chrome://extensions</code>,
+      enable <em>Developer mode</em>, click <em>Load unpacked</em>, and pick the
+      unzipped folder.
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>2. Get an API key</h2>
+    <p>
+      You need a key for an OpenAI-compatible chat-completions endpoint. Two options:
+    </p>
+    <ol class="steps">
+      <li>
+        <strong>Bring your own.</strong> Sign up at
+        <a href="https://openrouter.ai" target="_blank" rel="noopener">OpenRouter</a>
+        and create a key. You'll be billed directly by them. Cheaper at high volume.
+      </li>
+      <li>
+        <strong>Buy one from us.</strong>
+        <a href="/buy">Get a $5 key</a> via Stripe — emailed instantly. Top up
+        whenever you want at <a href="/topup">/topup</a>. Convenient, no extra account.
+      </li>
+    </ol>
+  </div>
+
+  <div class="card">
+    <h2>3. Configure the extension</h2>
+    <ol class="steps">
+      <li>Click the BorderBrowser icon in your browser toolbar, then <em>Settings</em>.</li>
+      <li>Paste the API key into the <em>API key</em> field.</li>
+      <li>
+        Confirm the <em>API base URL</em>. For OpenRouter that's
+        <code>https://openrouter.ai/api/v1</code>. For a BorderBrowser key
+        the buy page will tell you the correct base URL.
+      </li>
+      <li>Set your <em>target language</em> (English, Suomi, Español, …).</li>
+      <li>Save. You're done.</li>
+    </ol>
+  </div>
+
+  <div class="card">
+    <h2>4. Translate a page</h2>
+    <p>
+      Visit any of the sites in <a href="/">the directory</a> (or any foreign-language page),
+      click the BorderBrowser icon, and hit <strong>Translate this page</strong>. The page
+      will replace itself with the translated version in one atomic swap. Toggle back to
+      the original any time.
+    </p>
+  </div>
+</Base>

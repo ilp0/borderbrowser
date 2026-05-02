@@ -1,0 +1,68 @@
+---
+import Base from "../layouts/Base.astro";
+
+const tiers = [
+  { price: 5,  label: "$5",  credits: "≈ 400 page translations" },
+  { price: 10, label: "$10", credits: "≈ 800 page translations" },
+  { price: 25, label: "$25", credits: "≈ 2,000 page translations" },
+  { price: 50, label: "$50", credits: "≈ 4,000 page translations" },
+];
+---
+
+<Base title="Buy a BorderBrowser key" description="Buy a prepaid API key for BorderBrowser via Stripe. Pay once, key emailed instantly.">
+  <section class="hero">
+    <h1>Buy an API key</h1>
+    <p class="lede">
+      Pay with Stripe. We email you a prepaid API key instantly. Paste it into
+      the BorderBrowser extension and start translating. No subscription, no
+      account — when it runs out, top up at <a href="/topup">/topup</a> or buy a
+      new one.
+    </p>
+  </section>
+
+  <form class="card" id="buy-form" action="#" method="post">
+    <h2>1. Pick an amount</h2>
+    <div class="amounts">
+      {tiers.map((t, i) => (
+        <button type="button" class={`amount-chip${i === 0 ? " active" : ""}`} data-price={t.price}>
+          <span class="price">{t.label}</span>
+          <span class="credits">{t.credits}</span>
+        </button>
+      ))}
+    </div>
+
+    <h2>2. Where to send the key</h2>
+    <label class="field">
+      <span>Email</span>
+      <input type="email" name="email" id="email" placeholder="you@example.com" required autocomplete="email" />
+    </label>
+
+    <button type="submit" class="btn primary" id="checkout-btn">
+      Continue to Stripe Checkout
+    </button>
+
+    <div class="note">
+      Translations happen <strong>inside your browser</strong>; we never see the
+      pages you read. We only store your email + remaining credit balance, used
+      strictly for billing and key delivery.
+    </div>
+  </form>
+
+  <script type="module">
+    let price = 5;
+    document.querySelectorAll(".amount-chip").forEach((chip) => {
+      chip.addEventListener("click", () => {
+        document.querySelectorAll(".amount-chip").forEach((c) => c.classList.remove("active"));
+        chip.classList.add("active");
+        price = Number(chip.dataset.price);
+      });
+    });
+    document.getElementById("buy-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const email = document.getElementById("email").value.trim();
+      if (!email) return;
+      // Backend not deployed yet — placeholder.
+      alert(`Stripe Checkout for $${price} (${email}) — backend not deployed yet.`);
+    });
+  </script>
+</Base>

@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>BorderBrowser</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div class="container">
+      <header>
+        <div class="brand">BorderBrowser</div>
+        <div class="lang" id="target-lang">…</div>
+      </header>
+
+      <div class="status" id="status">Loading…</div>
+
+      <button class="btn primary" id="translate-btn" disabled>Translate this page</button>
+
+      <div class="toggle" id="toggle-row" hidden>
+        <button class="toggle-btn" id="show-orig" data-state="original">Original</button>
+        <button class="toggle-btn active" id="show-trans" data-state="translated">Translated</button>
+      </div>
+
+      <button class="btn secondary" id="premium-btn" hidden>
+        Re-translate with the premium model
+      </button>
+
+      <div class="meta" id="stats" hidden></div>
+
+      <footer>
+        <a href="#" id="open-options">Settings</a>
+        <span class="sep">·</span>
+        <a href="https://borderbrowser.example" id="open-home" target="_blank">Directory</a>
+      </footer>
+    </div>
+    <script src="main.js"></script>
+  </body>
+</html>

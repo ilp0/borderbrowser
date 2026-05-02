@@ -1,0 +1,22 @@
+name = "borderbrowser-api"
+main = "src/index.ts"
+compatibility_date = "2025-01-15"
+compatibility_flags = ["nodejs_compat"]
+
+# Production secrets are set via:
+#   wrangler secret put DATABASE_URL
+#   wrangler secret put STRIPE_SECRET_KEY
+#   wrangler secret put STRIPE_WEBHOOK_SECRET
+#   wrangler secret put RESEND_API_KEY
+#   wrangler secret put OPENROUTER_KEY
+# Local dev uses .dev.vars (see .dev.vars.example)
+
+[vars]
+PUBLIC_BASE_URL = "https://api.borderbrowser.example"
+HOMEPAGE_URL = "https://borderbrowser.example"
+EMAIL_FROM = "BorderBrowser <hello@borderbrowser.example>"
+# 30% margin over OpenRouter cost
+MARGIN_BPS = "3000"
+
+[observability]
+enabled = true

@@ -1,0 +1,12 @@
+# Postgres (Neon serverless connection string)
+DATABASE_URL="postgresql://user:pass@host/borderbrowser?sslmode=require"
+
+# Stripe — test keys for local dev, live keys in production secrets
+STRIPE_SECRET_KEY="sk_test_..."
+STRIPE_WEBHOOK_SECRET="whsec_..."
+
+# Resend (transactional email)
+RESEND_API_KEY="re_..."
+
+# OpenRouter — the upstream account that funds all proxied calls
+OPENROUTER_KEY="sk-or-v1-..."

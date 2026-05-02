@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>BorderBrowser · Settings</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <main class="container">
+      <header>
+        <h1>BorderBrowser</h1>
+        <p class="lede">
+          Read foreign-language web pages in your language. Configure your
+          translation provider below.
+        </p>
+      </header>
+
+      <section class="card">
+        <h2>API provider</h2>
+        <p class="hint">
+          BorderBrowser calls an OpenAI-compatible chat-completions endpoint.
+          Use OpenRouter (default) with your own key, or paste a key bought from
+          BorderBrowser. Keys live only in this browser and are never sent to us.
+        </p>
+
+        <label>
+          <span>API base URL</span>
+          <input id="baseUrl" type="url" placeholder="https://openrouter.ai/api/v1" autocomplete="off" />
+        </label>
+
+        <label>
+          <span>API key</span>
+          <input id="apiKey" type="password" placeholder="sk-..." autocomplete="off" spellcheck="false" />
+          <button class="link" id="reveal-key" type="button">show</button>
+        </label>
+
+        <div class="provider-shortcuts">
+          <button class="chip" data-base="https://openrouter.ai/api/v1">OpenRouter</button>
+          <button class="chip" data-base="https://api.openai.com/v1">OpenAI</button>
+          <button class="chip" data-base="https://api.anthropic.com/v1">Anthropic</button>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Translation</h2>
+
+        <label>
+          <span>Target language</span>
+          <input id="targetLang" type="text" placeholder="English" autocomplete="off" />
+        </label>
+
+        <label>
+          <span>Default model</span>
+          <input id="model" type="text" autocomplete="off" />
+        </label>
+
+        <label>
+          <span>Premium model (re-translate button)</span>
+          <input id="premiumModel" type="text" autocomplete="off" />
+        </label>
+      </section>
+
+      <div class="actions">
+        <button class="btn primary" id="save">Save settings</button>
+        <span class="saved" id="saved" hidden>Saved.</span>
+      </div>
+
+      <footer>
+        <a href="https://openrouter.ai/keys" target="_blank" rel="noopener">Get an OpenRouter key</a>
+        <span class="sep">·</span>
+        <a href="https://borderbrowser.example/buy" target="_blank" rel="noopener">Buy a BorderBrowser key</a>
+      </footer>
+    </main>
+    <script src="main.js"></script>
+  </body>
+</html>

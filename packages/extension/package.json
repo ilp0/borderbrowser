@@ -1,0 +1,19 @@
+{
+  "name": "@borderbrowser/extension",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "dev": "node build.mjs --watch",
+    "clean": "rimraf dist"
+  },
+  "dependencies": {
+    "@borderbrowser/translator": "*"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.0.287",
+    "esbuild": "^0.24.0",
+    "rimraf": "^6.0.1"
+  }
+}

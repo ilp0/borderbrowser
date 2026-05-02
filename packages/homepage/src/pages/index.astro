@@ -1,0 +1,50 @@
+---
+import Base from "../layouts/Base.astro";
+import { categoryLabels, countries } from "../data/countries.ts";
+
+const totalSites = countries.reduce((n, c) => n + c.sites.length, 0);
+---
+
+<Base title="BorderBrowser">
+  <section class="hero">
+    <h1>Read the world's internet in your language.</h1>
+    <p class="lede">
+      A curated directory of major news sites in {countries.length} countries —
+      paired with a browser extension that translates each page in real time
+      with an LLM. Atomic swap, no flicker, smooth toggle back to the original.
+    </p>
+    <div class="hero-cta">
+      <a class="btn primary" href="/install">Install the extension</a>
+      <a class="btn secondary" href="/buy">Buy an API key — $5</a>
+    </div>
+  </section>
+
+  <div class="directory-head">
+    <h2>The directory</h2>
+    <span class="count">{totalSites} sites · {countries.length} countries</span>
+  </div>
+
+  <div class="country-grid">
+    {countries.map((c) => (
+      <article class="country-card">
+        <header class="country-head">
+          <span class="flag" aria-hidden="true">{c.flag}</span>
+          <div class="country-meta">
+            <div class="country-name">{c.name}</div>
+            <div class="country-lang">{c.language}</div>
+          </div>
+        </header>
+        <ul class="site-list">
+          {c.sites.map((s) => (
+            <li class="site-row">
+              <a href={s.url} target="_blank" rel="noopener" title={s.description ?? s.name}>
+                {s.name}
+              </a>
+              <span class="site-cat">{categoryLabels[s.category]}</span>
+            </li>
+          ))}
+        </ul>
+      </article>
+    ))}
+  </div>
+</Base>

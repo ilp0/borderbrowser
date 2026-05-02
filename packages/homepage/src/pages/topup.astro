@@ -1,0 +1,59 @@
+---
+import Base from "../layouts/Base.astro";
+
+const tiers = [
+  { price: 5,  label: "$5" },
+  { price: 10, label: "$10" },
+  { price: 25, label: "$25" },
+  { price: 50, label: "$50" },
+];
+---
+
+<Base title="Top up a BorderBrowser key" description="Add credits to an existing BorderBrowser API key.">
+  <section class="hero">
+    <h1>Top up a key</h1>
+    <p class="lede">
+      Already have a BorderBrowser API key? Paste it below to add more credits.
+      Same key, more quota — no need to switch keys in the extension.
+    </p>
+  </section>
+
+  <form class="card" id="topup-form" action="#" method="post">
+    <label class="field">
+      <span>Your BorderBrowser API key</span>
+      <input type="text" name="apiKey" id="apiKey" placeholder="bb-..." spellcheck="false" autocomplete="off" required />
+    </label>
+
+    <h2>Add credits</h2>
+    <div class="amounts">
+      {tiers.map((t, i) => (
+        <button type="button" class={`amount-chip${i === 0 ? " active" : ""}`} data-price={t.price}>
+          <span class="price">{t.label}</span>
+        </button>
+      ))}
+    </div>
+
+    <button type="submit" class="btn primary">Continue to Stripe Checkout</button>
+
+    <div class="note">
+      Don't have a key yet? <a href="/buy">Buy your first one →</a>
+    </div>
+  </form>
+
+  <script type="module">
+    let price = 5;
+    document.querySelectorAll(".amount-chip").forEach((chip) => {
+      chip.addEventListener("click", () => {
+        document.querySelectorAll(".amount-chip").forEach((c) => c.classList.remove("active"));
+        chip.classList.add("active");
+        price = Number(chip.dataset.price);
+      });
+    });
+    document.getElementById("topup-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const key = document.getElementById("apiKey").value.trim();
+      if (!key) return;
+      alert(`Top-up $${price} for key ${key.slice(0, 8)}… — backend not deployed yet.`);
+    });
+  </script>
+</Base>
