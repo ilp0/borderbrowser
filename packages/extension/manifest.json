@@ -20,7 +20,7 @@
     {
       "matches": ["<all_urls>"],
       "js": ["content.js"],
-      "run_at": "document_idle"
+      "run_at": "document_start"
     }
   ],
   "permissions": [
@@ -29,6 +29,29 @@
     "scripting",
     "tabs"
   ],
+  "commands": {
+    "translate-page": {
+      "suggested_key": {
+        "default": "Alt+T",
+        "mac": "Alt+T"
+      },
+      "description": "Translate the active page"
+    },
+    "toggle-original": {
+      "suggested_key": {
+        "default": "Alt+O",
+        "mac": "Alt+O"
+      },
+      "description": "Toggle between original and translated"
+    },
+    "premium-retry": {
+      "suggested_key": {
+        "default": "Alt+Shift+P",
+        "mac": "Alt+Shift+P"
+      },
+      "description": "Re-translate using the premium model"
+    }
+  },
   "host_permissions": [
     "https://openrouter.ai/*",
     "https://api.openai.com/*",

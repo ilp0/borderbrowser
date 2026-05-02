@@ -11,6 +11,8 @@ export { decodeText } from "../placeholders.ts";
 export { extractFromDom, encodeFromLiveDom } from "./extract-live.ts";
 export type { LiveExtractResult } from "./extract-live.ts";
 export { applyTranslation, applyTranslationsBatch } from "./apply.ts";
+export type { ApplyOptions } from "./apply.ts";
+export { isRtl } from "../rtl.ts";
 export {
   translateUnits,
   DEFAULT_MODEL,
