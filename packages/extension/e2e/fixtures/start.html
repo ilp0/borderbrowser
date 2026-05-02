@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="fi">
+  <head>
+    <meta charset="utf-8" />
+    <title>BorderBrowser document_start fixture</title>
+    <meta name="description" content="Tarkistuslooki document_start-injektion turvallisuudelle." />
+    <meta property="og:title" content="document_start kunnossa" />
+    <meta property="og:description" content="Sivu, jolla varmistetaan ettei sisältöskripti kosketa DOMia ennen DOMContentLoadedia." />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "WebPage",
+        "name": "BorderBrowser document_start fixture",
+        "inLanguage": "fi"
+      }
+    </script>
+  </head>
+  <body>
+    <h1>Tervetuloa</h1>
+    <p>
+      Tämä sivu palvelee yhtä tarkoitusta: latautua puhtaasti, kun
+      sisältöskripti on rekisteröity <code>document_start</code>-vaiheessa.
+      Konsoli ei saa näyttää virheitä ennen <code>DOMContentLoaded</code>iä.
+    </p>
+    <p>
+      Avaa DevToolsin Console ja varmista että näet rivin
+      <code>[BorderBrowser] content script loaded</code> ja että
+      <code>readyState</code> on alkuvaiheessa <code>loading</code> — eli
+      skripti todella ajautui ennen DOMin valmistumista.
+    </p>
+    <ul>
+      <li>Ensimmäinen kohta</li>
+      <li>Toinen kohta</li>
+      <li>Kolmas kohta</li>
+    </ul>
+  </body>
+</html>

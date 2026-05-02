@@ -71,6 +71,10 @@ async function handleMessage(req: TabRequest): Promise<TabResponse> {
 
 async function translatePage(usePremium: boolean): Promise<void> {
   if (busy) return;
+  // Defensive: at document_start a popup-driven translate could race the
+  // page parse and hit a half-built DOM. Every entry point funnels here,
+  // so this single gate guards the whole flow.
+  await whenDomReady();
   busy = true;
   showOverlay("Translating page…");
   debug("start", { usePremium });
@@ -328,10 +332,12 @@ function sleep(ms: number): Promise<void> {
 
 // ---------- Test/automation hooks ----------
 //
-// `#bb-translate` in the URL → auto-translate after document_idle.
+// `#bb-translate` in the URL → auto-translate after DOMContentLoaded.
 // `document.dispatchEvent(new CustomEvent("borderbrowser:translate"))` from
 // page JS → trigger a translation cycle. Both are useful for driving the
 // extension from outside the popup (e.g. when iterating with a debugger).
+// `translatePage` itself awaits the DOM gate, so dispatching this event
+// before DOMContentLoaded is safe.
 
 document.addEventListener("borderbrowser:translate", (e: Event) => {
   const detail = (e as CustomEvent<{ usePremium?: boolean; targetLang?: string }>).detail;
@@ -397,8 +403,69 @@ const LANG_NAME_TO_CODE: Record<string, string> = {
 console.log("[BorderBrowser] content script loaded", {
   url: location.href,
   hash: location.hash,
+  readyState: document.readyState,
 });
 
-if (location.hash.includes("bb-translate")) {
-  setTimeout(() => void translatePage(false), 800);
+/**
+ * Resolves once the DOM is parsed enough that `document.body` exists.
+ *
+ * The content script registers at `document_start` so we can prep state
+ * before paint (and, in future units, intercept the `<head>` to pre-cache
+ * title/og:/JSON-LD before the page even draws). At that point the body
+ * is null and `extractFromDom` would explode. Every code path that touches
+ * the DOM funnels through this gate.
+ */
+function whenDomReady(): Promise<void> {
+  if (document.readyState === "interactive" || document.readyState === "complete") {
+    return Promise.resolve();
+  }
+  return new Promise((resolve) => {
+    document.addEventListener("DOMContentLoaded", () => resolve(), { once: true });
+  });
 }
+
+/**
+ * Snapshot of the `<head>` captured as soon as it's parsed. Reserved for
+ * the upcoming head-pre-translate work — the next unit will hand this
+ * off to the background SW so the translated title/meta are ready before
+ * the body swap. We capture it here (not lazily on demand) because by
+ * the time the user clicks Translate, the page's own JS may already have
+ * mutated the head.
+ */
+type HeadSnapshot = {
+  title: string;
+  metas: { name: string; content: string }[];
+  jsonLd: string[];
+};
+let headSnapshot: HeadSnapshot | null = null;
+
+function captureHead(): void {
+  if (headSnapshot) return;
+  const head = document.head;
+  if (!head) return;
+  const metas: { name: string; content: string }[] = [];
+  for (const m of head.querySelectorAll("meta")) {
+    const name = m.getAttribute("name") ?? m.getAttribute("property") ?? "";
+    const content = m.getAttribute("content") ?? "";
+    if (name && content) metas.push({ name, content });
+  }
+  const jsonLd: string[] = [];
+  for (const s of head.querySelectorAll('script[type="application/ld+json"]')) {
+    if (s.textContent) jsonLd.push(s.textContent);
+  }
+  headSnapshot = {
+    title: document.title,
+    metas,
+    jsonLd,
+  };
+  debug("head-captured", { title: headSnapshot.title, metas: metas.length, jsonLd: jsonLd.length });
+}
+
+void whenDomReady().then(() => {
+  captureHead();
+  if (location.hash.includes("bb-translate")) {
+    // Small delay preserved from the previous document_idle behavior so the
+    // page's own bootstrap JS gets a beat to settle before we extract.
+    setTimeout(() => void translatePage(false), 800);
+  }
+});
