@@ -10,6 +10,7 @@
  * every message handler reads config fresh.
  */
 
+import "./lib/browser.ts"; // Cross-browser polyfill (Chrome + Firefox MV3).
 import { translateUnits } from "@borderbrowser/translator/browser";
 import {
   getConfig,

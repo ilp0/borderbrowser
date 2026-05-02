@@ -6,13 +6,15 @@
   "scripts": {
     "build": "node build.mjs",
     "dev": "node build.mjs --watch",
-    "clean": "rimraf dist"
+    "clean": "rimraf dist dist-firefox"
   },
   "dependencies": {
-    "@borderbrowser/translator": "*"
+    "@borderbrowser/translator": "*",
+    "webextension-polyfill": "^0.12.0"
   },
   "devDependencies": {
     "@types/chrome": "^0.0.287",
+    "@types/webextension-polyfill": "^0.12.1",
     "esbuild": "^0.24.0",
     "rimraf": "^6.0.1"
   }
