@@ -7,15 +7,19 @@
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
     "migrate:local": "wrangler d1 execute borderbrowser --local --file=./migrations/001_init.sql",
-    "tail": "wrangler tail"
+    "tail": "wrangler tail",
+    "start:node": "tsx src/server.node.ts"
   },
   "dependencies": {
     "hono": "^4.6.14",
     "stripe": "^17.5.0",
-    "@neondatabase/serverless": "^0.10.4"
+    "@neondatabase/serverless": "^0.10.4",
+    "@hono/node-server": "^1.19.14",
+    "pg": "^8.13.1"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20241218.0",
-    "wrangler": "^3.99.0"
+    "wrangler": "^3.99.0",
+    "@types/pg": "^8.11.10"
   }
 }
