@@ -1,0 +1,180 @@
+---
+import Base from "../layouts/Base.astro";
+
+const features = [
+  {
+    title: "Side-by-side reading",
+    body:
+      "Original and translation in two columns, scroll-synced. Read the foreign text first; glance right when you get stuck.",
+  },
+  {
+    title: "Frequency-based vocabulary",
+    body:
+      "Every page extracts its vocabulary, ranked by how rare the word is in everyday use. Skip the easy ones, focus on the words that earn you new pages.",
+  },
+  {
+    title: "Spaced-repetition export",
+    body:
+      "One click exports the words you marked into Anki, Mochi, or plain CSV. Your reading turns directly into review decks.",
+  },
+];
+
+const samplePairs = [
+  {
+    fr: "Le Premier ministre a annoncé hier soir une réforme du code du travail qui doit entrer en vigueur dès le mois prochain.",
+    en: "The Prime Minister announced yesterday evening a reform of the labour code which is to come into force as soon as next month.",
+  },
+  {
+    fr: "Selon plusieurs syndicats, la mesure aggraverait la précarité des jeunes salariés et serait insuffisante pour relancer l'embauche.",
+    en: "According to several unions, the measure would worsen job insecurity for young employees and would not be enough to restart hiring.",
+  },
+  {
+    fr: "Le gouvernement, lui, juge que sans ces ajustements la croissance restera durablement en deçà de celle de nos voisins européens.",
+    en: "The government, for its part, holds that without these adjustments growth will remain durably below that of our European neighbours.",
+  },
+];
+---
+
+<Base title="Learn a language with BorderBrowser" description="Read foreign-language news as a learning loop: side-by-side mode, frequency-based vocabulary, and spaced-repetition export.">
+  <section class="hero">
+    <h1>Read foreign-language news as a learning loop.</h1>
+    <p class="lede">
+      Most language apps simulate the language. BorderBrowser lets you read
+      the actual newspapers people read every morning — and turns that
+      reading into vocabulary you can review tomorrow.
+    </p>
+    <div class="hero-cta">
+      <a class="btn primary" href="/install">Install the extension</a>
+      <a class="btn secondary" href="/">Browse the directory</a>
+    </div>
+  </section>
+
+  <div class="learn-features">
+    {features.map((f) => (
+      <article class="learn-feature">
+        <h2>{f.title}</h2>
+        <p>{f.body}</p>
+      </article>
+    ))}
+  </div>
+
+  <section class="learn-sample">
+    <header class="learn-sample-head">
+      <h2>Side-by-side, in your reader</h2>
+      <span class="learn-sample-lang">Le Monde · French → English</span>
+    </header>
+    <div class="learn-sample-grid">
+      <div class="learn-col learn-col-source" lang="fr">
+        {samplePairs.map((p) => <p>{p.fr}</p>)}
+      </div>
+      <div class="learn-col learn-col-target" lang="en">
+        {samplePairs.map((p) => <p>{p.en}</p>)}
+      </div>
+    </div>
+    <p class="learn-sample-note">
+      In the extension, hover a sentence on either side to highlight its
+      partner across the gutter. Click an unfamiliar word to add it to the
+      review queue.
+    </p>
+  </section>
+
+  <section class="card learn-cta">
+    <h2>Turn the world's news into a study habit</h2>
+    <p>
+      Learn mode is bundled with the regular BorderBrowser extension — toggle
+      it on per-domain when you want to study, off when you just want to read.
+    </p>
+    <div class="hero-cta">
+      <a class="btn primary" href="/install">Install BorderBrowser</a>
+    </div>
+  </section>
+</Base>
+
+<style>
+  .learn-features {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 14px;
+    margin: 28px 0 36px;
+  }
+  .learn-feature {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 20px;
+    box-shadow: var(--shadow);
+  }
+  .learn-feature h2 {
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: -0.005em;
+    margin-bottom: 6px;
+  }
+  .learn-feature p {
+    color: var(--muted);
+    font-size: 14px;
+  }
+
+  .learn-sample {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 24px;
+    margin-bottom: 24px;
+    box-shadow: var(--shadow);
+  }
+  .learn-sample-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 14px;
+  }
+  .learn-sample-head h2 {
+    font-size: 17px;
+    font-weight: 700;
+    letter-spacing: -0.005em;
+  }
+  .learn-sample-lang {
+    font-size: 12px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .learn-sample-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+  }
+  .learn-col {
+    padding: 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    font-size: 14.5px;
+    line-height: 1.6;
+  }
+  .learn-col-source {
+    background: var(--bg);
+    border-right: 1px solid var(--line);
+  }
+  .learn-col-target {
+    background: var(--surface);
+    color: var(--muted);
+  }
+  .learn-sample-note {
+    font-size: 12px;
+    color: var(--muted);
+    margin-top: 12px;
+  }
+  @media (max-width: 640px) {
+    .learn-sample-grid { grid-template-columns: 1fr; }
+    .learn-col-source { border-right: 0; border-bottom: 1px solid var(--line); }
+  }
+
+  .learn-cta h2 { margin-bottom: 8px; }
+</style>
