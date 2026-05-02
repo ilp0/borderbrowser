@@ -6,7 +6,8 @@
  *   GET  /v1/credits             — balance lookup for an issued key
  *   POST /buy                    — Stripe Checkout for a new key
  *   POST /topup                  — Stripe Checkout to add credits to an existing key
- *   POST /webhook                — Stripe webhook (mints/credits keys, sends email)
+ *   POST /subscribe              — Stripe Checkout for Pro subscription ($8/mo)
+ *   POST /webhook                — Stripe webhook (mints/credits keys, subs, email)
  */
 import { Hono } from "hono";
 import { billing } from "./billing.ts";
@@ -32,7 +33,7 @@ app.get("/", (c) =>
   c.json({
     name: "BorderBrowser API",
     docs: c.env.HOMEPAGE_URL,
-    endpoints: ["/v1/chat/completions", "/v1/credits", "/buy", "/topup"],
+    endpoints: ["/v1/chat/completions", "/v1/credits", "/buy", "/topup", "/subscribe"],
   }),
 );
 

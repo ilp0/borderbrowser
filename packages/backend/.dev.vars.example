@@ -4,6 +4,9 @@ DATABASE_URL="postgresql://user:pass@host/borderbrowser?sslmode=require"
 # Stripe — test keys for local dev, live keys in production secrets
 STRIPE_SECRET_KEY="sk_test_..."
 STRIPE_WEBHOOK_SECRET="whsec_..."
+# Recurring price for Pro subscription ($8/mo). Leave blank locally; /subscribe
+# will return 503 pro_not_configured until set.
+STRIPE_PRO_PRICE_ID=""
 
 # Resend (transactional email)
 RESEND_API_KEY="re_..."

@@ -7,6 +7,7 @@ compatibility_flags = ["nodejs_compat"]
 #   wrangler secret put DATABASE_URL
 #   wrangler secret put STRIPE_SECRET_KEY
 #   wrangler secret put STRIPE_WEBHOOK_SECRET
+#   wrangler secret put STRIPE_PRO_PRICE_ID   # recurring $8/mo price (price_…)
 #   wrangler secret put RESEND_API_KEY
 #   wrangler secret put OPENROUTER_KEY
 # Local dev uses .dev.vars (see .dev.vars.example)

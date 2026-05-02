@@ -18,7 +18,10 @@ import {
   findKeyByHash,
   insertApiKey,
   recordTopUp,
+  setSubscriptionStatus,
   topUpAlreadyApplied,
+  upsertSubscription,
+  type SubscriptionStatus,
 } from "./db.ts";
 import { sendNewKeyEmail, sendTopUpEmail } from "./email.ts";
 import { generateApiKey, hashKey, isWellFormed, keyPrefix } from "./keys.ts";
@@ -118,6 +121,42 @@ billing.post("/topup", async (c) => {
   return c.json({ url: session.url });
 });
 
+billing.post("/subscribe", async (c) => {
+  const { apiKey } = await c.req.json<{ apiKey?: string }>();
+
+  if (!apiKey || !isWellFormed(apiKey)) {
+    return c.json({ error: "invalid_key" }, 400);
+  }
+
+  const sql = db(c.env.DATABASE_URL);
+  const row = await findKeyByHash(sql, await hashKey(apiKey));
+  if (!row) return c.json({ error: "key_not_found" }, 404);
+  if (row.revoked) return c.json({ error: "key_revoked" }, 403);
+
+  const priceId = c.env.STRIPE_PRO_PRICE_ID;
+  if (!priceId) {
+    return c.json({ error: "pro_not_configured" }, 503);
+  }
+
+  const stripe = stripeClient(c.env);
+  const session = await stripe.checkout.sessions.create({
+    mode: "subscription",
+    payment_method_types: ["card"],
+    customer_email: row.email,
+    line_items: [{ price: priceId, quantity: 1 }],
+    success_url: `${c.env.HOMEPAGE_URL}/pro?status=success`,
+    cancel_url: `${c.env.HOMEPAGE_URL}/pro?status=cancel`,
+    // subscription_data.metadata is what the webhook reads — Checkout-session
+    // metadata doesn't propagate to subscription.created events.
+    subscription_data: {
+      metadata: { api_key_id: String(row.id) },
+    },
+    metadata: { flow: "pro_subscribe", api_key_id: String(row.id) },
+  });
+
+  return c.json({ url: session.url });
+});
+
 billing.post("/webhook", async (c) => {
   const sig = c.req.header("stripe-signature");
   if (!sig) return c.text("missing signature", 400);
@@ -138,6 +177,42 @@ billing.post("/webhook", async (c) => {
     return c.text(`signature verification failed: ${err}`, 400);
   }
 
+  const sql = db(c.env.DATABASE_URL);
+
+  // --- Subscription lifecycle (Pro $8/mo) ----------------------------------
+  // Idempotent: upsertSubscription/setSubscriptionStatus key on
+  // stripe_subscription_id, so duplicate deliveries converge.
+  if (
+    event.type === "customer.subscription.created" ||
+    event.type === "customer.subscription.updated"
+  ) {
+    const sub = event.data.object as Stripe.Subscription;
+    const apiKeyId = Number(sub.metadata?.api_key_id ?? 0);
+    if (!apiKeyId) return c.text("missing api_key_id metadata", 400);
+    await upsertSubscription(sql, {
+      apiKeyId,
+      stripeSubscriptionId: sub.id,
+      stripeCustomerId: typeof sub.customer === "string" ? sub.customer : sub.customer.id,
+      status: mapSubStatus(sub.status),
+      currentPeriodEnd: sub.current_period_end
+        ? new Date(sub.current_period_end * 1000)
+        : null,
+    });
+    return c.text("ok", 200);
+  }
+
+  if (event.type === "customer.subscription.deleted") {
+    const sub = event.data.object as Stripe.Subscription;
+    await setSubscriptionStatus(sql, {
+      stripeSubscriptionId: sub.id,
+      status: "cancelled",
+      currentPeriodEnd: sub.current_period_end
+        ? new Date(sub.current_period_end * 1000)
+        : null,
+    });
+    return c.text("ok", 200);
+  }
+
   if (event.type !== "checkout.session.completed") {
     // Acknowledge so Stripe stops retrying.
     return c.text("ok", 200);
@@ -145,7 +220,12 @@ billing.post("/webhook", async (c) => {
 
   const session = event.data.object as Stripe.Checkout.Session;
   const flow = session.metadata?.flow;
-  const sql = db(c.env.DATABASE_URL);
+
+  if (flow === "pro_subscribe") {
+    // The actual subscription row is created by customer.subscription.created.
+    // Nothing to do here beyond acknowledging.
+    return c.text("ok", 200);
+  }
 
   if (flow === "new_key") {
     if (await topUpAlreadyApplied(sql, session.id)) return c.text("ok", 200);
@@ -221,6 +301,13 @@ function stripeClient(env: Env): Stripe {
   return new Stripe(env.STRIPE_SECRET_KEY, {
     httpClient: Stripe.createFetchHttpClient(),
   });
+}
+
+/** Map Stripe's subscription status strings to our 3-bucket schema. */
+function mapSubStatus(s: Stripe.Subscription.Status): SubscriptionStatus {
+  if (s === "active" || s === "trialing") return "active";
+  if (s === "past_due" || s === "unpaid") return "past_due";
+  return "cancelled";
 }
 
 // Silence unused-import warning for findKeyByEmail (kept for /lookup if added later).
