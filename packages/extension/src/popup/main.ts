@@ -3,6 +3,7 @@
  * between original ↔ translated. The popup talks to the active tab's content
  * script; it never makes LLM calls itself.
  */
+import "../lib/browser.ts"; // Cross-browser polyfill (Chrome + Firefox MV3).
 import { getConfig, getSecrets } from "../lib/config.ts";
 import { sendToTab } from "../lib/messages.ts";
 import type { TabStatus } from "../lib/messages.ts";

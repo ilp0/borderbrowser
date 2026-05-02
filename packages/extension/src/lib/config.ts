@@ -17,6 +17,8 @@ export type Config = {
   autoTranslateDomains: Record<string, boolean>;
   /** Domains where reading mode should auto-enable on page load. */
   readingModeDomains: string[];
+  /** Hover-peek the original beneath each translated paragraph. Default on. */
+  hoverPeek: boolean;
 };
 
 export type Secrets = {
@@ -34,6 +36,7 @@ export const DEFAULT_CONFIG: Config = {
   targetLang: "English",
   autoTranslateDomains: {},
   readingModeDomains: [],
+  hoverPeek: true,
 };
 
 export const DEFAULT_SECRETS: Secrets = {
