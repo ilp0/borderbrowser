@@ -37,6 +37,25 @@ This emits two parallel builds from a single source tree:
 
 `webextension-polyfill` is bundled into both so the same source uses the unified `browser.*` namespace at runtime.
 
+### End-to-end tests
+
+Playwright lives at the repo root and is shared across all workspaces.
+
+```bash
+npm install
+npm run e2e:install                            # one-time: fetch the Chromium browser
+npm run -w @borderbrowser/homepage build       # the homepage e2e project runs against `astro preview`
+npm run -w @borderbrowser/extension build      # required for the extension project
+npm run e2e                                    # run all e2e projects
+npm run e2e -- --project=homepage              # just the homepage smoke
+npm run e2e -- --project=extension             # just the extension project
+```
+
+The homepage Playwright project starts `astro preview` automatically via
+`webServer` in `playwright.config.ts`, so `npm run e2e` is self-contained once
+the homepage has been built. CI (`.github/workflows/ci.yml`) runs unit tests,
+builds the extension and homepage, then runs `npm run e2e` on every push and PR.
+
 ## Status
 
 In active development. Step 1: de-risk structure-preserving translation in isolation.

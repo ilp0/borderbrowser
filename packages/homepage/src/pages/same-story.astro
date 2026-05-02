@@ -1,0 +1,60 @@
+---
+import Base from "../layouts/Base.astro";
+import { sameStory } from "../data/sameStory.ts";
+
+const updated = new Date(sameStory.updatedAt).toLocaleString("en-GB", {
+  dateStyle: "medium",
+  timeStyle: "short",
+  timeZone: "UTC",
+});
+---
+
+<Base
+  title="Same story, many countries"
+  description="One global news event, side-by-side as covered by sources around the world. The killer feature of BorderBrowser."
+>
+  <section class="story-hero">
+    <div class="story-tag">Killer feature · Scaffold</div>
+    <h1>Same story, many countries</h1>
+    <p class="lede">
+      One major news event, presented side-by-side as covered by leading
+      outlets in different countries. Each card shows the original headline
+      in its native language and a quick English rendering, so you can scan
+      framing differences at a glance.
+    </p>
+    <div class="story-meta">
+      <span class="story-event">{sameStory.title}</span>
+      <span class="dot">·</span>
+      <span>{sameStory.sources.length} sources</span>
+      <span class="dot">·</span>
+      <span>Updated {updated} UTC</span>
+    </div>
+    <p class="story-synopsis">{sameStory.synopsis}</p>
+  </section>
+
+  <div class="story-grid">
+    {sameStory.sources.map((s) => (
+      <article class="story-card" lang={s.langCode}>
+        <header class="story-card-head">
+          <span class="flag" aria-hidden="true">{s.flag}</span>
+          <div class="story-card-meta">
+            <div class="story-card-source">{s.name}</div>
+            <div class="story-card-country">{s.country} · {s.language}</div>
+          </div>
+        </header>
+        <h3 class="story-card-headline">{s.headline}</h3>
+        <p class="story-card-translation">{s.headlineEn}</p>
+        <p class="story-card-excerpt">{s.excerpt}</p>
+        <a class="story-card-link" href={s.url} target="_blank" rel="noopener">
+          Read at {s.name} →
+        </a>
+      </article>
+    ))}
+  </div>
+
+  <p class="story-disclaimer">
+    Scaffold view: headlines, translations and excerpts on this page are mock
+    data illustrating the layout. Live story clustering and translation will
+    replace this dataset in a later milestone.
+  </p>
+</Base>
