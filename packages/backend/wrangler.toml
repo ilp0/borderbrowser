@@ -18,5 +18,12 @@ EMAIL_FROM = "BorderBrowser <hello@borderbrowser.example>"
 # 30% margin over OpenRouter cost
 MARGIN_BPS = "3000"
 
+# Edge translation cache (Vision §8). Anonymous content hashes only — no URLs
+# or user identifiers. Replace `id` with the namespace id from
+# `wrangler kv namespace create TRANSLATION_CACHE` before deploying.
+[[kv_namespaces]]
+binding = "TRANSLATION_CACHE"
+id = "REPLACE_WITH_KV_NAMESPACE_ID"
+
 [observability]
 enabled = true
