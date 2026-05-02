@@ -50,6 +50,26 @@
           <input id="targetLang" type="text" placeholder="English" autocomplete="off" />
         </label>
 
+        <fieldset class="tone-group" id="tone-group">
+          <legend><span>Tone</span></legend>
+          <label class="radio">
+            <input type="radio" name="tone" value="formal" />
+            <span>Formal</span>
+          </label>
+          <label class="radio">
+            <input type="radio" name="tone" value="neutral" />
+            <span>Neutral</span>
+          </label>
+          <label class="radio">
+            <input type="radio" name="tone" value="casual" />
+            <span>Casual</span>
+          </label>
+          <p class="hint">
+            Neutral keeps the source register. Formal avoids contractions and
+            uses precise nouns; casual prefers conversational phrasing.
+          </p>
+        </fieldset>
+
         <label>
           <span>Default model</span>
           <input id="model" type="text" autocomplete="off" />

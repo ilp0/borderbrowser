@@ -59,6 +59,7 @@ async function handleMessage(req: BgRequest): Promise<BgResponse> {
         })),
         {
           targetLang: req.targetLang,
+          tone: req.tone,
           model: req.model,
           apiKey: req.apiKey,
           baseUrl: req.baseUrl,

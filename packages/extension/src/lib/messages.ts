@@ -7,7 +7,7 @@
  * Responses always include a discriminating `ok` / `error` field.
  */
 
-import type { Config, Secrets } from "./config.ts";
+import type { Config, Secrets, Tone } from "./config.ts";
 
 export type SerializedUnit = {
   id: number;
@@ -19,6 +19,7 @@ export type BgRequest =
   | {
       kind: "bg.translate";
       targetLang: string;
+      tone?: Tone;
       model: string;
       baseUrl: string;
       apiKey: string;

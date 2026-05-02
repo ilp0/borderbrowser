@@ -4,6 +4,10 @@
  * so they don't sync across devices.
  */
 
+import type { Tone } from "@borderbrowser/translator/browser";
+
+export type { Tone };
+
 export type Config = {
   /** Base URL of an OpenAI-compatible chat-completions endpoint. */
   baseUrl: string;
@@ -13,6 +17,8 @@ export type Config = {
   premiumModel: string;
   /** Target language for translation (e.g. "English", "Suomi", "日本語"). */
   targetLang: string;
+  /** Tone preference for translations. */
+  tone: Tone;
   /** Per-domain auto-translate flags. Domain → bool. */
   autoTranslateDomains: Record<string, boolean>;
 };
@@ -30,6 +36,7 @@ export const DEFAULT_CONFIG: Config = {
   model: "anthropic/claude-haiku-4.5",
   premiumModel: "anthropic/claude-sonnet-4.6",
   targetLang: "English",
+  tone: "neutral",
   autoTranslateDomains: {},
 };
 

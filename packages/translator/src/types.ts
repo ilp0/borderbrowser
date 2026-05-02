@@ -25,9 +25,14 @@ export type TranslationUnit = {
   placeholders: Map<number, PlaceholderInfo>;
 };
 
+/** Tone register for the translation. "neutral" matches the source register; the others nudge it. */
+export type Tone = "formal" | "neutral" | "casual";
+
 export type TranslateOptions = {
   /** Target language, e.g. "English", "fi", "Spanish (Latin American)". */
   targetLang: string;
+  /** Tone preference. Defaults to "neutral" (no extra instruction). */
+  tone?: Tone;
   /** OpenRouter model id. Defaults to anthropic/claude-haiku-4.5. */
   model?: string;
   /** OpenRouter API key. Defaults to env OPENROUTER_API_KEY. */
