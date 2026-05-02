@@ -9,14 +9,19 @@ import type { PlaceholderInfo } from "../types.ts";
  * descendants. For pure-content pages this is fine; SPAs will usually re-render
  * on next state change anyway. A future refinement can re-use the original
  * element nodes for inline placeholders to preserve handlers.
+ *
+ * When `targetLang` is provided, the element's `lang` attribute is set to that
+ * BCP 47 code so screen readers pronounce the new text correctly.
  */
 export function applyTranslation(
   element: Element,
   translatedText: string,
   placeholders: Map<number, PlaceholderInfo>,
+  targetLang?: string,
 ): void {
   const html = decodeText(translatedText, placeholders);
   element.innerHTML = html;
+  if (targetLang) element.setAttribute("lang", targetLang);
 }
 
 /**
@@ -31,8 +36,9 @@ export function applyTranslationsBatch(
     translatedText: string;
     placeholders: Map<number, PlaceholderInfo>;
   }>,
+  targetLang?: string,
 ): void {
   for (const { element, translatedText, placeholders } of entries) {
-    applyTranslation(element, translatedText, placeholders);
+    applyTranslation(element, translatedText, placeholders, targetLang);
   }
 }
