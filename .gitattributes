@@ -1,0 +1,18 @@
+* text=auto
+
+# Files where additive merges are common during the VISION batch integration.
+# `union` keeps both sides of conflicts as separate lines rather than producing
+# conflict markers. Acceptable here because every entry below is a list-shaped
+# file (re-exports, registrations, deps, nav links, configs).
+package.json merge=union
+package-lock.json merge=union
+packages/translator/src/index.ts merge=union
+packages/translator/src/browser/index.ts merge=union
+packages/translator/src/browser/dom-only.ts merge=union
+packages/translator/src/types.ts merge=union
+packages/extension/src/lib/messages.ts merge=union
+packages/extension/src/lib/config.ts merge=union
+packages/extension/manifest.json merge=union
+packages/homepage/src/layouts/Base.astro merge=union
+packages/homepage/public/styles.css merge=union
+packages/backend/src/types.ts merge=union
