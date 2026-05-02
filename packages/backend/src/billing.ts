@@ -17,7 +17,9 @@ import {
   findKeyByEmail,
   findKeyByHash,
   insertApiKey,
+  popAnonKey,
   recordTopUp,
+  stashAnonKey,
   topUpAlreadyApplied,
 } from "./db.ts";
 import { sendNewKeyEmail, sendTopUpEmail } from "./email.ts";
@@ -29,24 +31,50 @@ export const billing = new Hono<{ Bindings: Env }>();
 
 const ALLOWED_AMOUNTS_CENTS = new Set([500, 1000, 2500, 5000, 10000]);
 
-billing.post("/buy", async (c) => {
-  const { email, amountUsdCents } = await c.req.json<{
-    email?: string;
-    amountUsdCents?: number;
-  }>();
+export type BuyInput = {
+  email?: string;
+  amountUsdCents?: number;
+  anonymous?: boolean;
+};
+export type BuyValidation =
+  | { ok: true; isAnon: boolean; email: string | null; amountUsdCents: number }
+  | { ok: false; error: "invalid_email" | "invalid_amount" };
 
-  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    return c.json({ error: "invalid_email" }, 400);
+/**
+ * Pure validator for /buy — exported so tests can hit it without mocking
+ * Stripe. `anonymous: true` short-circuits the email check.
+ */
+export function validateBuy(input: BuyInput): BuyValidation {
+  const isAnon = input.anonymous === true;
+  if (!isAnon && (!input.email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input.email))) {
+    return { ok: false, error: "invalid_email" };
   }
-  if (!amountUsdCents || !ALLOWED_AMOUNTS_CENTS.has(amountUsdCents)) {
-    return c.json({ error: "invalid_amount" }, 400);
+  if (!input.amountUsdCents || !ALLOWED_AMOUNTS_CENTS.has(input.amountUsdCents)) {
+    return { ok: false, error: "invalid_amount" };
   }
+  return {
+    ok: true,
+    isAnon,
+    email: isAnon ? null : input.email!,
+    amountUsdCents: input.amountUsdCents,
+  };
+}
+
+billing.post("/buy", async (c) => {
+  // Anonymous flow: pay without giving us an email. No receipt is sent (Stripe
+  // shows a "no email on file" Checkout flow), and the key is delivered via
+  // the success page using {CHECKOUT_SESSION_ID}.
+  const v = validateBuy(await c.req.json<BuyInput>());
+  if (!v.ok) return c.json({ error: v.error }, 400);
+  const { isAnon, email, amountUsdCents } = v;
 
   const stripe = stripeClient(c.env);
   const session = await stripe.checkout.sessions.create({
     mode: "payment",
     payment_method_types: ["card"],
-    customer_email: email,
+    // Anonymous: leave customer_email undefined — Stripe will not auto-send a
+    // receipt and we won't know who paid. By design.
+    ...(email ? { customer_email: email } : {}),
     line_items: [
       {
         price_data: {
@@ -59,16 +87,34 @@ billing.post("/buy", async (c) => {
         quantity: 1,
       },
     ],
-    success_url: `${c.env.HOMEPAGE_URL}/buy?status=success`,
+    // Anonymous flow appends &session_id={CHECKOUT_SESSION_ID} so the success
+    // page can fetch the minted key from /v1/anon-key.
+    success_url: isAnon
+      ? `${c.env.HOMEPAGE_URL}/buy?status=success&anon=1&session_id={CHECKOUT_SESSION_ID}`
+      : `${c.env.HOMEPAGE_URL}/buy?status=success`,
     cancel_url: `${c.env.HOMEPAGE_URL}/buy?status=cancel`,
     metadata: {
       flow: "new_key",
-      email,
       amount_usd_cents: String(amountUsdCents),
+      ...(isAnon ? { anonymous: "1" } : { email: email! }),
     },
   });
 
   return c.json({ url: session.url });
+});
+
+/**
+ * Anonymous-flow key retrieval. The success page hits this once with the
+ * Stripe session id; we return the raw key and delete the row so it can't be
+ * fetched again. Single-shot by design — there's no email to fall back on.
+ */
+billing.get("/v1/anon-key", async (c) => {
+  const sessionId = c.req.query("session_id");
+  if (!sessionId) return c.json({ error: "missing_session_id" }, 400);
+  const sql = db(c.env.DATABASE_URL);
+  const apiKey = await popAnonKey(sql, sessionId);
+  if (!apiKey) return c.json({ error: "not_ready_or_already_retrieved" }, 404);
+  return c.json({ apiKey });
 });
 
 billing.post("/topup", async (c) => {
@@ -93,7 +139,9 @@ billing.post("/topup", async (c) => {
   const session = await stripe.checkout.sessions.create({
     mode: "payment",
     payment_method_types: ["card"],
-    customer_email: row.email,
+    // For anonymous keys (email = null), Stripe gets no customer_email; user
+    // continues unidentified.
+    ...(row.email ? { customer_email: row.email } : {}),
     line_items: [
       {
         price_data: {
@@ -150,9 +198,12 @@ billing.post("/webhook", async (c) => {
   if (flow === "new_key") {
     if (await topUpAlreadyApplied(sql, session.id)) return c.text("ok", 200);
 
-    const email = session.metadata?.email ?? session.customer_email ?? "";
+    const isAnon = session.metadata?.anonymous === "1";
+    const email = isAnon
+      ? null
+      : (session.metadata?.email ?? session.customer_email ?? "");
     const amountCents = Number(session.metadata?.amount_usd_cents ?? 0);
-    if (!email || !amountCents) return c.text("bad metadata", 400);
+    if ((!isAnon && !email) || !amountCents) return c.text("bad metadata", 400);
 
     const apiKey = generateApiKey();
     const credits = usdCentsToMicros(amountCents);
@@ -171,12 +222,17 @@ billing.post("/webhook", async (c) => {
       creditsAdded: credits,
     });
 
-    await sendNewKeyEmail(c.env, {
-      to: email,
-      apiKey,
-      credits,
-      baseUrl: c.env.PUBLIC_BASE_URL + "/v1",
-    });
+    if (isAnon) {
+      // No email to send to — stash the raw key for one-shot pickup.
+      await stashAnonKey(sql, { stripeSessionId: session.id, apiKey });
+    } else {
+      await sendNewKeyEmail(c.env, {
+        to: email!,
+        apiKey,
+        credits,
+        baseUrl: c.env.PUBLIC_BASE_URL + "/v1",
+      });
+    }
     return c.text("ok", 200);
   }
 
@@ -197,13 +253,14 @@ billing.post("/webhook", async (c) => {
       creditsAdded: credits,
     });
 
-    // Look up email + new balance for the receipt
+    // Look up email + new balance for the receipt. Anonymous keys have no
+    // email; we silently skip the receipt for them.
     const row = (await sql`
       SELECT email, key_prefix, credits_remaining
       FROM api_keys WHERE id = ${apiKeyId}
-    `) as { email: string; key_prefix: string; credits_remaining: number }[];
+    `) as { email: string | null; key_prefix: string; credits_remaining: number }[];
     const r = row[0];
-    if (r) {
+    if (r && r.email) {
       await sendTopUpEmail(c.env, {
         to: r.email,
         keyPrefix: r.key_prefix,

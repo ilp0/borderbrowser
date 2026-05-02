@@ -32,9 +32,14 @@ const tiers = [
     </div>
 
     <h2>2. Where to send the key</h2>
-    <label class="field">
+    <label class="field" id="email-field">
       <span>Email</span>
-      <input type="email" name="email" id="email" placeholder="you@example.com" required autocomplete="email" />
+      <input type="email" name="email" id="email" placeholder="you@example.com" autocomplete="email" />
+    </label>
+
+    <label class="field checkbox">
+      <input type="checkbox" name="anonymous" id="anonymous" />
+      <span>Anonymous (no email) — show the key on the next page instead. We won't be able to recover it for you.</span>
     </label>
 
     <button type="submit" class="btn primary" id="checkout-btn">
@@ -44,9 +49,16 @@ const tiers = [
     <div class="note">
       Translations happen <strong>inside your browser</strong>; we never see the
       pages you read. We only store your email + remaining credit balance, used
-      strictly for billing and key delivery.
+      strictly for billing and key delivery. Anonymous purchases skip the email
+      entirely.
     </div>
   </form>
+
+  <div class="card" id="anon-result" style="display:none">
+    <h2>Your API key</h2>
+    <p>Save this key now. We can't recover it for you — there's no email on file.</p>
+    <pre id="anon-key-out"></pre>
+  </div>
 
   <script type="module">
     let price = 5;
@@ -57,12 +69,41 @@ const tiers = [
         price = Number(chip.dataset.price);
       });
     });
+
+    const emailInput = document.getElementById("email");
+    const emailField = document.getElementById("email-field");
+    const anonCheckbox = document.getElementById("anonymous");
+    anonCheckbox.addEventListener("change", () => {
+      const anon = anonCheckbox.checked;
+      emailField.style.display = anon ? "none" : "";
+      emailInput.required = !anon;
+      if (anon) emailInput.value = "";
+    });
+
     document.getElementById("buy-form").addEventListener("submit", async (e) => {
       e.preventDefault();
-      const email = document.getElementById("email").value.trim();
-      if (!email) return;
+      const anonymous = anonCheckbox.checked;
+      const email = emailInput.value.trim();
+      if (!anonymous && !email) return;
       // Backend not deployed yet — placeholder.
-      alert(`Stripe Checkout for $${price} (${email}) — backend not deployed yet.`);
+      alert(`Stripe Checkout for $${price} (${anonymous ? "anonymous" : email}) — backend not deployed yet.`);
     });
+
+    // Anonymous-flow pickup: when Stripe redirects back with ?anon=1&session_id=...
+    // the key is fetched once from the backend.
+    const params = new URLSearchParams(location.search);
+    if (params.get("status") === "success" && params.get("anon") === "1") {
+      const sessionId = params.get("session_id");
+      if (sessionId) {
+        fetch(`/v1/anon-key?session_id=${encodeURIComponent(sessionId)}`)
+          .then((r) => (r.ok ? r.json() : null))
+          .then((d) => {
+            if (d && d.apiKey) {
+              document.getElementById("anon-result").style.display = "";
+              document.getElementById("anon-key-out").textContent = d.apiKey;
+            }
+          });
+      }
+    }
   </script>
 </Base>
