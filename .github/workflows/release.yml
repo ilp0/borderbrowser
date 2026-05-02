@@ -1,0 +1,92 @@
+name: release
+
+# Triggered when a tag matching v* is pushed (e.g. v0.1.2).
+# Builds the extension from the tagged commit, packages dist/ into a zip,
+# computes the SHA-256, and uploads both as assets on a GitHub release.
+#
+# This workflow is intentionally separate from the regular CI workflow
+# (.github/workflows/ci.yml). CI runs on every push and PR; this runs
+# only on tags and is allowed to write release artifacts.
+#
+# See docs/SECURITY.md for the threat model and the verification recipe
+# users follow to confirm a release matches a specific commit.
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  # Required to create the release and upload assets.
+  contents: write
+  # Reserved for future provenance attestations (see SECURITY.md "Where
+  # signing fits in"). Harmless to grant now.
+  id-token: write
+  attestations: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out tagged commit
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          # Pinned to keep the install graph deterministic. Bumping this
+          # version is a deliberate change that should be reflected in
+          # docs/SECURITY.md.
+          node-version: "22.11.0"
+          cache: "npm"
+
+      - name: Install dependencies
+        # npm ci fails if package-lock.json and package.json disagree,
+        # which is what we want for reproducibility.
+        run: npm ci
+
+      - name: Build extension
+        run: npm run -w @borderbrowser/extension build
+
+      - name: Package dist into a zip with sorted entries
+        id: package
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          zip_name="borderbrowser-extension-${tag}.zip"
+          # -X strips extra file attributes; sorting the entry list keeps
+          # the zip byte-stable across runs of this workflow.
+          ( cd packages/extension/dist && find . -type f | LC_ALL=C sort | zip -X "../../../${zip_name}" -@ )
+          echo "zip_name=${zip_name}" >> "$GITHUB_OUTPUT"
+
+      - name: Compute SHA-256 checksum
+        run: |
+          set -euo pipefail
+          zip_name="${{ steps.package.outputs.zip_name }}"
+          sha256sum "${zip_name}" > SHA256SUMS
+          # Echo the checksum into the workflow log so it appears in the
+          # publicly visible run output, in addition to the release page.
+          cat SHA256SUMS
+
+      - name: Create GitHub release with artifact and checksum
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            ${{ steps.package.outputs.zip_name }}
+            SHA256SUMS
+          generate_release_notes: true
+          # The body is appended to the auto-generated notes. The
+          # SHA-256 is the verification anchor described in
+          # docs/SECURITY.md.
+          body: |
+            Built from `${{ github.sha }}` on `${{ github.ref_name }}`.
+
+            Verify the artifact matches this build:
+
+            ```
+            shasum -a 256 -c SHA256SUMS
+            ```
+
+            See `docs/SECURITY.md` for the full local-rebuild verification recipe.
