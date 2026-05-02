@@ -9,6 +9,7 @@
     "migrate:local": "wrangler d1 execute borderbrowser --local --file=./migrations/001_init.sql",
     "tail": "wrangler tail",
     "start:node": "tsx src/server.node.ts"
+    "test": "node --test --import tsx/esm test/*.test.ts"
   },
   "dependencies": {
     "hono": "^4.6.14",
