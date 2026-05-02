@@ -14,6 +14,12 @@ export { applyTranslation, applyTranslationsBatch } from "./apply.ts";
 export type { ApplyOptions } from "./apply.ts";
 export { isRtl } from "../rtl.ts";
 export {
+  extractJsonLd,
+  applyJsonLdTranslations,
+  snapshotJsonLdOriginals,
+} from "./extract-jsonld.ts";
+export type { JsonLdExtractResult } from "./extract-jsonld.ts";
+export {
   translateUnits,
   DEFAULT_MODEL,
   type BatchUsage,
