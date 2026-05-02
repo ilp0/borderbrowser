@@ -41,17 +41,37 @@ export type TranslateOptions = {
   batchSize?: number;
   /** Concurrent in-flight batches. Defaults to 4. */
   concurrency?: number;
+  /**
+   * Document-level coherence: when a page needs more than one batch, prepend
+   * the last `contextOverlapChars` characters of batch (n-1)'s translated
+   * output to batch n as a separate "previous context" user message so names,
+   * pronouns, and tone stay consistent across batches.
+   *
+   * Defaults to 1000. Set to 0 to disable (which also re-enables the parallel
+   * fast path — overlap injection forces sequential execution because batch n
+   * must wait for batch n-1's translation).
+   */
+  contextOverlapChars?: number;
+};
+
+/**
+ * Diagnostic stats returned with a translation. `contextOverlapChars` is the
+ * total number of characters of prior-batch translated text injected as
+ * context across the whole run (zero for single-batch pages and when
+ * `TranslateOptions.contextOverlapChars` is 0).
+ */
+export type TranslationStats = {
+  units: number;
+  batches: number;
+  inputTokens: number;
+  outputTokens: number;
+  cachedInputTokens: number;
+  contextOverlapChars: number;
+  elapsedMs: number;
 };
 
 export type TranslateResult = {
   html: string;
   /** Diagnostic info for the caller (cost, latency, retries). */
-  stats: {
-    units: number;
-    batches: number;
-    inputTokens: number;
-    outputTokens: number;
-    cachedInputTokens: number;
-    elapsedMs: number;
-  };
+  stats: TranslationStats;
 };
