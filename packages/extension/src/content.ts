@@ -10,6 +10,7 @@
  * Calls the background SW for the actual LLM round-trip — never makes the
  * fetch itself, so the API key never leaves chrome.storage.local + the SW.
  */
+import "./lib/browser.ts"; // Cross-browser polyfill (Chrome + Firefox MV3).
 import {
   decodeText,
   extractFromDom,
@@ -19,13 +20,15 @@ import {
   getCached,
   putCached,
 } from "./lib/cache.ts";
-import { getRuntimeConfig, setConfig } from "./lib/config.ts";
+import { getConfig, getRuntimeConfig, setConfig } from "./lib/config.ts";
+import { attachPeek, detachAll as detachPeek } from "./lib/hover-peek.ts";
 import {
   type TabRequest,
   type TabResponse,
   type TabStatus,
   sendToBg,
 } from "./lib/messages.ts";
+import * as readingMode from "./lib/reading-mode.ts";
 
 type CacheEntry = { original: string; translated: string };
 const cache: WeakMap<Element, CacheEntry> = new WeakMap();
@@ -60,6 +63,9 @@ async function handleMessage(req: TabRequest): Promise<TabResponse> {
     case "tab.showTranslated":
       showState("translated");
       return { kind: "tab.ack", ok: true };
+    case "tab.toggleReadingMode":
+      await handleToggleReadingMode(req.enabled);
+      return { kind: "tab.ack", ok: true };
     case "tab.toggleOriginal":
       // No-op when nothing has been translated yet — leave the page alone so
       // the keyboard shortcut doesn't surprise users on un-translated pages.
@@ -76,8 +82,31 @@ async function handleMessage(req: TabRequest): Promise<TabResponse> {
           showing: pageState,
           ...(lastStats ? { lastStats } : {}),
           busy,
+          readingMode: readingMode.isEnabled(),
         },
       };
+  }
+}
+
+async function handleToggleReadingMode(explicit?: boolean): Promise<void> {
+  const shouldEnable =
+    explicit === undefined ? !readingMode.isEnabled() : explicit;
+
+  // If enable() couldn't find an article we don't persist — would auto-fail
+  // again next load.
+  const ok = shouldEnable ? readingMode.enable() : (readingMode.disable(), true);
+  if (!ok) return;
+
+  const host = location.hostname;
+  if (!host) return;
+  try {
+    const cfg = await getConfig();
+    const set = new Set(cfg.readingModeDomains);
+    if (shouldEnable) set.add(host);
+    else set.delete(host);
+    await setConfig({ readingModeDomains: Array.from(set) });
+  } catch (err) {
+    console.warn("[BorderBrowser] failed to persist reading mode pref", err);
   }
 }
 
@@ -224,12 +253,16 @@ async function translatePage(usePremium: boolean): Promise<void> {
       const entry = cache.get(el);
       if (entry) entry.translated = html;
       el.innerHTML = html;
+      // `lang` lets screen readers pronounce the swapped-in text correctly.
+      el.setAttribute("lang", targetLangCode);
       translatedElements.add(el);
     }
     pageState = "translated";
+    if (cfg.hoverPeek) attachAllPeeks();
     lastStats = stats;
     debug("done", { units: units.length, elapsedMs, applied: updates.length });
 
+    announce(`Page translated to ${cfg.targetLang}`);
     hideOverlay();
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -265,6 +298,22 @@ function showState(s: "original" | "translated"): void {
     else el.innerHTML = entry.translated;
   }
   pageState = s;
+  // Peek would point at original-shown text, so detach on the way back.
+  if (s === "original") {
+    detachPeek(translatedElements);
+  } else {
+    void (async () => {
+      const cfg = await getRuntimeConfig();
+      if (cfg.hoverPeek) attachAllPeeks();
+    })();
+  }
+}
+
+function attachAllPeeks(): void {
+  for (const el of translatedElements) {
+    const entry = cache.get(el);
+    if (entry) attachPeek(el, entry.original);
+  }
 }
 
 // ---------- Overlay (lives in a Shadow DOM so the host page's CSS can't touch it) ----------
@@ -272,6 +321,7 @@ function showState(s: "original" | "translated"): void {
 let overlayHost: HTMLElement | null = null;
 let overlayRoot: HTMLElement | null = null;
 let overlayText: HTMLElement | null = null;
+let overlayLive: HTMLElement | null = null;
 
 function ensureOverlay(): HTMLElement {
   if (overlayRoot) return overlayRoot;
@@ -291,7 +341,11 @@ function ensureOverlay(): HTMLElement {
       display: flex; align-items: center; justify-content: center;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "SF Pro Text", Roboto, sans-serif;
       opacity: 0; pointer-events: none;
-      transition: opacity 220ms ease;
+    }
+    /* Reduced-motion users get an instant swap — no fade, no spinner spin. */
+    @media (prefers-reduced-motion: no-preference) {
+      .root { transition: opacity 220ms ease; }
+      .spinner { animation: spin 720ms linear infinite; }
     }
     .root.show { opacity: 1; pointer-events: auto; }
     .card {
@@ -305,12 +359,17 @@ function ensureOverlay(): HTMLElement {
       width: 18px; height: 18px;
       border: 2px solid rgba(0,0,0,0.10); border-top-color: #2563eb;
       border-radius: 50%;
-      animation: spin 720ms linear infinite;
       flex-shrink: 0;
     }
     .icon-error { color: #dc2626; font-size: 18px; line-height: 1; }
     .icon-info  { color: #2563eb; font-size: 18px; line-height: 1; }
     .text { font-weight: 500; line-height: 1.4; }
+    /* Visually hidden but accessible to screen readers. */
+    .live {
+      position: absolute; width: 1px; height: 1px;
+      padding: 0; margin: -1px; overflow: hidden;
+      clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+    }
     @keyframes spin { to { transform: rotate(360deg); } }
   `;
 
@@ -324,11 +383,28 @@ function ensureOverlay(): HTMLElement {
   text.className = "text";
   card.append(spinner, text);
   root.append(card);
-  shadow.append(style, root);
+
+  // ARIA live region — sits in the shadow root alongside the overlay so the
+  // host page's CSS can't suppress it. Visually hidden via `.live`. We push
+  // one announcement per translation pass (not per element) so screen-reader
+  // users hear "Page translated to Finnish" once, not 200 times.
+  const live = document.createElement("div");
+  live.className = "live";
+  live.setAttribute("role", "status");
+  live.setAttribute("aria-live", "polite");
+  live.setAttribute("aria-atomic", "true");
+
+  shadow.append(style, root, live);
 
   overlayRoot = root;
   overlayText = text;
+  overlayLive = live;
   return root;
+}
+
+function announce(message: string): void {
+  ensureOverlay();
+  if (overlayLive) overlayLive.textContent = message;
 }
 
 function setOverlayIcon(icon: "spinner" | "info" | "error"): void {
@@ -514,3 +590,16 @@ void whenDomReady().then(() => {
     setTimeout(() => void translatePage(false), 800);
   }
 });
+
+// Auto-enable reading mode if this domain is in the user's saved list.
+void (async () => {
+  try {
+    const cfg = await getConfig();
+    const host = location.hostname;
+    if (host && cfg.readingModeDomains?.includes(host)) {
+      readingMode.enable();
+    }
+  } catch {
+    // chrome.storage may be unavailable in odd contexts; non-fatal.
+  }
+})();

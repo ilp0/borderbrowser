@@ -1,0 +1,154 @@
+---
+import Base from "../layouts/Base.astro";
+
+const sampleDate = "Tue, May 3";
+const samples = [
+  {
+    flag: "🇫🇷",
+    country: "France",
+    source: "Le Monde",
+    headline: "Government weighs new pension reform after weekend protests",
+  },
+  {
+    flag: "🇩🇪",
+    country: "Germany",
+    source: "Süddeutsche Zeitung",
+    headline: "Bundestag debates emergency energy package ahead of winter",
+  },
+  {
+    flag: "🇯🇵",
+    country: "Japan",
+    source: "Asahi Shimbun",
+    headline: "Tokyo unveils plan to revitalise rural prefectures by 2030",
+  },
+  {
+    flag: "🇧🇷",
+    country: "Brazil",
+    source: "Folha de S.Paulo",
+    headline: "Amazon deforestation rate falls to ten-year low, agency reports",
+  },
+  {
+    flag: "🇫🇮",
+    country: "Finland",
+    source: "Helsingin Sanomat",
+    headline: "Helsinki extends free public transport trial through summer",
+  },
+  {
+    flag: "🇪🇸",
+    country: "Spain",
+    source: "El País",
+    headline: "Madrid courts side with tenants in landmark short-let ruling",
+  },
+  {
+    flag: "🇮🇳",
+    country: "India",
+    source: "The Hindu",
+    headline: "Monsoon forecast sharpened after new satellite ingestion",
+  },
+  {
+    flag: "🇰🇷",
+    country: "South Korea",
+    source: "Hankyoreh",
+    headline: "Seoul unveils incentives for small studios producing K-content",
+  },
+];
+---
+
+<Base
+  title="Daily border digest"
+  description="One short email a day with what eight countries' front pages led with — translated into your language."
+>
+  <section class="hero">
+    <h1>The world's front pages, in one email.</h1>
+    <p class="lede">
+      Every morning we read the front page of eight national newspapers, pull
+      the lead story from each, translate the headlines into your language, and
+      send you a single short email. No feed to scroll, no app to open — just a
+      five-minute window into what the rest of the world is talking about today.
+      Free for paid BorderBrowser users; everyone else can try it on a waitlist.
+    </p>
+  </section>
+
+  <div class="card">
+    <h2>What you'll get</h2>
+    <ul class="steps">
+      <li>One email per weekday morning, 8 headlines, ~150 words total.</li>
+      <li>One paper per country — rotated to avoid a single-outlet view of the world.</li>
+      <li>Each headline links to the original page; click translates it via the extension.</li>
+    </ul>
+  </div>
+
+  <section class="digest-sample">
+    <div class="sample-label">Sample · {sampleDate}</div>
+    <article class="digest-card">
+      <header class="digest-head">
+        <div class="digest-title">Today's border digest</div>
+        <div class="digest-sub">8 countries · 8 lead stories · {sampleDate}</div>
+      </header>
+      <ul class="digest-list">
+        {samples.map((s) => (
+          <li class="digest-row">
+            <span class="flag" aria-hidden="true">{s.flag}</span>
+            <div class="digest-col">
+              <div class="digest-meta">
+                <span class="digest-country">{s.country}</span>
+                <span class="dot">·</span>
+                <span class="digest-source">{s.source}</span>
+              </div>
+              <div class="digest-headline">{s.headline}</div>
+            </div>
+          </li>
+        ))}
+      </ul>
+      <footer class="digest-foot">
+        Translated by BorderBrowser · unsubscribe any time
+      </footer>
+    </article>
+  </section>
+
+  <form class="card" id="digest-form" action="/digest/subscribe" method="post">
+    <h2>Sign up</h2>
+    <label class="field">
+      <span>Email</span>
+      <input
+        type="email"
+        name="email"
+        id="email"
+        placeholder="you@example.com"
+        required
+        autocomplete="email"
+      />
+    </label>
+
+    <label class="field">
+      <span>BorderBrowser API key (optional)</span>
+      <input
+        type="text"
+        name="apiKey"
+        id="apiKey"
+        placeholder="bb-… (paid users skip the waitlist)"
+        spellcheck="false"
+        autocomplete="off"
+      />
+    </label>
+
+    <button type="submit" class="btn primary">Subscribe</button>
+
+    <div class="note">
+      Don't have a key yet? <a href="/buy">Buy one for $5 →</a> Free users join
+      a waitlist while the digest is in early access.
+    </div>
+  </form>
+
+  <script type="module">
+    document.getElementById("digest-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const email = document.getElementById("email").value.trim();
+      const apiKey = document.getElementById("apiKey").value.trim();
+      if (!email) return;
+      // Backend not deployed yet — placeholder.
+      const tier = apiKey ? "paid" : "waitlist";
+      alert(`Subscribed ${email} (${tier}) — backend not deployed yet.`);
+    });
+  </script>
+</Base>

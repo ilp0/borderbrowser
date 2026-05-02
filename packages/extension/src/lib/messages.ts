@@ -51,6 +51,7 @@ export type TabRequest =
   | { kind: "tab.translatePage"; usePremium?: boolean }
   | { kind: "tab.showOriginal" }
   | { kind: "tab.showTranslated" }
+  | { kind: "tab.toggleReadingMode"; enabled?: boolean }
   | { kind: "tab.toggleOriginal" }
   | { kind: "tab.getStatus" };
 
@@ -68,6 +69,8 @@ export type TabStatus = {
   };
   /** Any in-progress translation? */
   busy: boolean;
+  /** Reading-mode currently active on this tab? */
+  readingMode: boolean;
 };
 
 export type TabResponse =

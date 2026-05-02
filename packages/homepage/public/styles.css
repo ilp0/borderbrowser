@@ -313,6 +313,64 @@ input:focus {
   font-family: ui-monospace, SF Mono, Menlo, Consolas, monospace;
 }
 
+/* --------- Digest sample --------- */
+.digest-sample {
+  margin: 8px 0 24px;
+}
+.sample-label {
+  font-size: 11px; font-weight: 600; color: var(--muted);
+  letter-spacing: 0.06em; text-transform: uppercase;
+  margin-bottom: 8px;
+}
+.digest-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 22px 24px;
+  box-shadow: var(--shadow-md);
+  max-width: 640px;
+  font-family: Georgia, "Iowan Old Style", "Source Serif Pro", serif;
+}
+.digest-head {
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 12px; margin-bottom: 12px;
+}
+.digest-title {
+  font-size: 20px; font-weight: 700;
+  letter-spacing: -0.01em;
+}
+.digest-sub {
+  font-size: 12px; color: var(--muted);
+  margin-top: 2px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  letter-spacing: 0.02em;
+}
+.digest-list {
+  list-style: none;
+  display: flex; flex-direction: column;
+  gap: 10px;
+}
+.digest-row {
+  display: flex; gap: 12px; align-items: flex-start;
+  padding: 6px 0;
+}
+.digest-row .flag { font-size: 22px; line-height: 1.2; flex-shrink: 0; }
+.digest-col { display: flex; flex-direction: column; gap: 2px; }
+.digest-meta {
+  font-size: 11px; color: var(--muted);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  text-transform: uppercase; letter-spacing: 0.05em;
+}
+.digest-meta .dot { margin: 0 5px; color: #c0c0c8; }
+.digest-headline {
+  font-size: 15px; line-height: 1.4; color: var(--text);
+}
+.digest-foot {
+  border-top: 1px solid var(--line);
+  margin-top: 14px; padding-top: 12px;
+  font-size: 11px; color: var(--muted);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  letter-spacing: 0.02em;
 /* --------- Atlas (/atlas) --------- */
 .atlas-note {
   font-size: 13px;
