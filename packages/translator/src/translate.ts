@@ -4,6 +4,7 @@ import { localizeText } from "./localize.ts";
 import type { TranslateOptions, TranslationUnit } from "./types.ts";
 
 export const DEFAULT_MODEL = "anthropic/claude-haiku-4.5";
+export const DEFAULT_CONTEXT_OVERLAP_CHARS = 1000;
 const DEFAULT_BASE_URL = "https://openrouter.ai/api/v1";
 
 const ResponseSchema = z.object({
@@ -23,7 +24,7 @@ export type BatchUsage = {
 
 export type TranslateUnitsResult = {
   translated: Map<number, string>;
-  stats: { batches: number } & BatchUsage;
+  stats: { batches: number; contextOverlapChars: number } & BatchUsage;
 };
 
 export async function translateUnits(
@@ -38,6 +39,7 @@ export async function translateUnits(
   const model = options.model ?? DEFAULT_MODEL;
   const batchSize = options.batchSize ?? 40;
   const concurrency = options.concurrency ?? 4;
+  const overlapChars = options.contextOverlapChars ?? DEFAULT_CONTEXT_OVERLAP_CHARS;
 
   const client = new OpenAI({
     apiKey,
@@ -54,24 +56,59 @@ export async function translateUnits(
   }
 
   const translated = new Map<number, string>();
-  const stats = { batches: 0, inputTokens: 0, outputTokens: 0, cachedInputTokens: 0 };
+  const stats = {
+    batches: 0,
+    inputTokens: 0,
+    outputTokens: 0,
+    cachedInputTokens: 0,
+    contextOverlapChars: 0,
+  };
 
-  let nextBatchIdx = 0;
-  const workerCount = Math.min(concurrency, batches.length);
-  const workers = Array.from({ length: workerCount }, async () => {
-    while (true) {
-      const idx = nextBatchIdx++;
-      if (idx >= batches.length) return;
-      const batch = batches[idx]!;
-      const r = await translateBatchWithRetry(client, model, batch, options.targetLang);
+  // When document-level coherence is enabled (overlapChars > 0) and there is
+  // more than one batch, run sequentially — each batch needs the previous
+  // batch's translation as context. Single-batch pages and overlapChars === 0
+  // keep the original parallel fast path.
+  if (overlapChars > 0 && batches.length > 1) {
+    let prevContext = "";
+    for (const batch of batches) {
+      const r = await translateBatchWithRetry(
+        client,
+        model,
+        batch,
+        options.targetLang,
+        prevContext,
+      );
       for (const t of r.translations) translated.set(t.id, t.text);
       stats.batches++;
       stats.inputTokens += r.usage.inputTokens;
       stats.outputTokens += r.usage.outputTokens;
       stats.cachedInputTokens += r.usage.cachedInputTokens;
+      stats.contextOverlapChars += prevContext.length;
+
+      // Build the next batch's context from this batch's translated output.
+      // If the batch failed (retry-and-skip), translations is empty and we
+      // simply carry no overlap forward — better to drop coherence than to
+      // poison the next batch with stale prior context.
+      prevContext = buildOverlapContext(r.translations, overlapChars);
     }
-  });
-  await Promise.all(workers);
+  } else {
+    let nextBatchIdx = 0;
+    const workerCount = Math.min(concurrency, batches.length);
+    const workers = Array.from({ length: workerCount }, async () => {
+      while (true) {
+        const idx = nextBatchIdx++;
+        if (idx >= batches.length) return;
+        const batch = batches[idx]!;
+        const r = await translateBatchWithRetry(client, model, batch, options.targetLang, "");
+        for (const t of r.translations) translated.set(t.id, t.text);
+        stats.batches++;
+        stats.inputTokens += r.usage.inputTokens;
+        stats.outputTokens += r.usage.outputTokens;
+        stats.cachedInputTokens += r.usage.cachedInputTokens;
+      }
+    });
+    await Promise.all(workers);
+  }
 
   // Post-translation localization pass: runs on translated text BEFORE the
   // caller decodes placeholders. Skipped entirely when no localize options
@@ -85,16 +122,36 @@ export async function translateUnits(
   return { translated, stats };
 }
 
+/**
+ * Take the joined translated text from a completed batch and return the last
+ * `overlapChars` characters as a "previous context" snippet for the next
+ * batch. Translations are joined with newlines so the LLM sees them as
+ * distinct sentences rather than one run-on string.
+ *
+ * Returns "" when there's nothing useful to carry forward (empty batch result
+ * from the warn-and-skip fallback path) so we don't inject empty context.
+ */
+function buildOverlapContext(
+  translations: { id: number; text: string }[],
+  overlapChars: number,
+): string {
+  if (translations.length === 0 || overlapChars <= 0) return "";
+  const joined = translations.map((t) => t.text).join("\n");
+  if (joined.length <= overlapChars) return joined;
+  return joined.slice(joined.length - overlapChars);
+}
+
 async function translateBatchWithRetry(
   client: OpenAI,
   model: string,
   batch: TranslationUnit[],
   targetLang: string,
+  priorContext: string,
 ): Promise<{ translations: { id: number; text: string }[]; usage: BatchUsage }> {
   let lastError: unknown;
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
-      return await translateBatch(client, model, batch, targetLang);
+      return await translateBatch(client, model, batch, targetLang, priorContext);
     } catch (err) {
       lastError = err;
       // Backoff: 0.5s, 2s, 8s on retry
@@ -119,14 +176,15 @@ async function translateBatch(
   model: string,
   batch: TranslationUnit[],
   targetLang: string,
+  priorContext: string,
 ): Promise<{ translations: { id: number; text: string }[]; usage: BatchUsage }> {
   const inputPayload = batch.map((u) => ({ id: u.id, kind: u.kind, text: u.text }));
 
   // The system content uses the cache_control extension supported by OpenRouter
   // for Anthropic models. Cast as any since the OpenAI SDK types don't include it.
-  const messages = [
+  const messages: { role: "system" | "user"; content: unknown }[] = [
     {
-      role: "system" as const,
+      role: "system",
       content: [
         {
           type: "text",
@@ -135,11 +193,22 @@ async function translateBatch(
         },
       ],
     },
-    {
-      role: "user" as const,
-      content: `Translate these ${batch.length} snippet(s):\n${JSON.stringify(inputPayload)}`,
-    },
   ];
+
+  // Doc-level coherence: prepend the previous batch's translated tail as a
+  // separate user turn (kept out of the system prompt to preserve caching).
+  if (priorContext.length > 0) {
+    messages.push({
+      role: "user",
+      content:
+        `Previous translated context (for tone, names, pronouns — do NOT re-translate or include in output):\n${priorContext}`,
+    });
+  }
+
+  messages.push({
+    role: "user",
+    content: `Translate these ${batch.length} snippet(s):\n${JSON.stringify(inputPayload)}`,
+  });
 
   const response = await client.chat.completions.create({
     model,
