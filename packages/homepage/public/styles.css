@@ -173,22 +173,57 @@ main {
   list-style: none; display: flex; flex-direction: column; gap: 4px;
 }
 .site-row {
-  display: flex; align-items: center; justify-content: space-between;
+  display: flex; align-items: flex-start;
   padding: 6px 8px; border-radius: 8px;
   margin: 0 -8px;
   transition: background 80ms;
 }
 .site-row:hover { background: var(--soft); }
-.site-row a {
-  font-size: 14px; color: var(--text); font-weight: 500;
-  flex: 1; min-width: 0;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+.site-main {
+  display: flex; flex-direction: column; gap: 2px;
+  min-width: 0; width: 100%;
 }
-.site-row a:hover { color: var(--accent); text-decoration: none; }
+.site-line {
+  display: flex; align-items: center; gap: 6px;
+  min-width: 0;
+}
+.site-line a {
+  font-size: 14px; color: var(--text); font-weight: 500;
+  min-width: 0;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  flex-shrink: 1;
+}
+.site-line a:hover { color: var(--accent); text-decoration: none; }
 .site-cat {
   font-size: 11px; color: var(--muted);
   text-transform: uppercase; letter-spacing: 0.04em;
   flex-shrink: 0;
+  margin-left: auto;
+}
+.site-desc {
+  font-size: 12px; color: var(--muted);
+  line-height: 1.4;
+}
+
+/* --------- Editorial chips --------- */
+.chip {
+  display: inline-flex; align-items: center;
+  font-size: 10px; font-weight: 600;
+  letter-spacing: 0.02em;
+  padding: 2px 7px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.chip-state {
+  background: #fdecec; color: #a51d1d; border-color: #f5c8c8;
+}
+.chip-independent-in-exile {
+  background: #ecf3fd; color: #1a4ea8; border-color: #c8d8f5;
+}
+.chip-tabloid {
+  background: #fff5e0; color: #8a5a00; border-color: #f3dcab;
 }
 
 /* --------- Cards (used on install/buy/topup pages) --------- */
@@ -276,4 +311,252 @@ input:focus {
   font-size: 12px;
   background: var(--soft); padding: 1px 5px; border-radius: 4px;
   font-family: ui-monospace, SF Mono, Menlo, Consolas, monospace;
+}
+
+/* --------- Digest sample --------- */
+.digest-sample {
+  margin: 8px 0 24px;
+}
+.sample-label {
+  font-size: 11px; font-weight: 600; color: var(--muted);
+  letter-spacing: 0.06em; text-transform: uppercase;
+  margin-bottom: 8px;
+}
+.digest-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 22px 24px;
+  box-shadow: var(--shadow-md);
+  max-width: 640px;
+  font-family: Georgia, "Iowan Old Style", "Source Serif Pro", serif;
+}
+.digest-head {
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 12px; margin-bottom: 12px;
+}
+.digest-title {
+  font-size: 20px; font-weight: 700;
+  letter-spacing: -0.01em;
+}
+.digest-sub {
+  font-size: 12px; color: var(--muted);
+  margin-top: 2px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  letter-spacing: 0.02em;
+}
+.digest-list {
+  list-style: none;
+  display: flex; flex-direction: column;
+  gap: 10px;
+}
+.digest-row {
+  display: flex; gap: 12px; align-items: flex-start;
+  padding: 6px 0;
+}
+.digest-row .flag { font-size: 22px; line-height: 1.2; flex-shrink: 0; }
+.digest-col { display: flex; flex-direction: column; gap: 2px; }
+.digest-meta {
+  font-size: 11px; color: var(--muted);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  text-transform: uppercase; letter-spacing: 0.05em;
+}
+.digest-meta .dot { margin: 0 5px; color: #c0c0c8; }
+.digest-headline {
+  font-size: 15px; line-height: 1.4; color: var(--text);
+}
+.digest-foot {
+  border-top: 1px solid var(--line);
+  margin-top: 14px; padding-top: 12px;
+  font-size: 11px; color: var(--muted);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  letter-spacing: 0.02em;
+/* --------- Atlas (/atlas) --------- */
+.atlas-note {
+  font-size: 13px;
+  color: var(--muted);
+  border-left: 2px solid var(--line);
+  padding-left: 10px;
+  max-width: 60ch;
+}
+.atlas-map-wrap {
+/* --------- Same-story page --------- */
+.story-hero {
+  padding: 24px 0 8px;
+  display: flex; flex-direction: column; gap: 10px;
+}
+.story-tag {
+  align-self: flex-start;
+  font-size: 11px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-radius: 999px;
+  padding: 4px 10px;
+}
+.story-hero h1 {
+  font-size: clamp(26px, 4vw, 36px);
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  font-weight: 800;
+  max-width: 22ch;
+}
+.story-hero p.lede {
+  font-size: clamp(14px, 1.5vw, 16px);
+  color: var(--muted);
+  max-width: 64ch;
+}
+.story-meta {
+  display: flex; flex-wrap: wrap; gap: 6px;
+  font-size: 13px; color: var(--muted);
+  margin-top: 4px;
+}
+.story-meta .story-event { color: var(--text); font-weight: 600; }
+.story-meta .dot { color: #c0c0c8; }
+.story-synopsis {
+  font-size: 14px; color: var(--muted);
+  max-width: 72ch;
+  border-left: 3px solid var(--soft);
+  padding: 4px 0 4px 12px;
+  margin-top: 4px;
+}
+
+.story-grid {
+  margin-top: 20px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 14px;
+}
+.story-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 16px;
+  margin: 24px 0 16px;
+  box-shadow: var(--shadow);
+}
+.atlas-map {
+  width: 100%; height: auto; display: block;
+}
+.atlas-land path {
+  fill: #eef0f4;
+  stroke: #d8dde6;
+  stroke-width: 0.8;
+}
+.atlas-marker {
+  cursor: pointer;
+  outline: none;
+}
+.atlas-marker rect {
+  transition: transform 100ms, filter 100ms;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+.atlas-marker:hover rect,
+.atlas-marker:focus rect {
+  transform: scale(1.25);
+  filter: drop-shadow(0 1px 2px rgba(0,0,0,0.25));
+}
+.atlas-marker-label {
+  font-size: 9px;
+  fill: var(--muted);
+  font-family: inherit;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 80ms;
+}
+.atlas-marker:hover .atlas-marker-label,
+.atlas-marker:focus .atlas-marker-label {
+  opacity: 1;
+}
+.atlas-legend {
+  display: flex; align-items: center;
+  gap: 10px; margin-top: 12px;
+  font-size: 12px; color: var(--muted);
+}
+.legend-bar {
+  display: inline-flex;
+  height: 10px; width: 120px;
+  border-radius: 3px; overflow: hidden;
+}
+.legend-stop { flex: 1; }
+.legend-range {
+  display: inline-flex;
+  width: 120px;
+  justify-content: space-between;
+}
+
+.atlas-modal {
+  position: fixed; inset: 0; z-index: 100;
+  display: flex; align-items: center; justify-content: center;
+  padding: 16px;
+}
+.atlas-modal[hidden] { display: none; }
+.atlas-modal-backdrop {
+  position: absolute; inset: 0;
+  background: rgba(14,14,16,0.45);
+}
+.atlas-modal-card {
+  position: relative;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-md);
+  padding: 20px;
+  width: min(440px, 100%);
+  max-height: 80vh; overflow: auto;
+}
+.atlas-modal-head {
+  display: flex; align-items: center; gap: 12px;
+  margin-bottom: 14px;
+}
+.atlas-modal-head > div { flex: 1; }
+.atlas-modal-close {
+  appearance: none; background: transparent; border: 0;
+  font-size: 22px; line-height: 1;
+  cursor: pointer; color: var(--muted);
+  padding: 4px 8px;
+}
+.atlas-modal-close:hover { color: var(--text); }
+.atlas-modal-jump { margin-top: 12px; }
+  display: flex; flex-direction: column; gap: 10px;
+  transition: border-color 120ms, box-shadow 120ms;
+}
+.story-card:hover {
+  border-color: #cdd2dc;
+  box-shadow: var(--shadow-md);
+}
+.story-card-head {
+  display: flex; align-items: center; gap: 10px;
+}
+.story-card-meta {
+  display: flex; flex-direction: column; gap: 1px; min-width: 0;
+}
+.story-card-source {
+  font-weight: 700; font-size: 14px; letter-spacing: -0.005em;
+}
+.story-card-country {
+  font-size: 12px; color: var(--muted);
+}
+.story-card-headline {
+  font-size: 15px; line-height: 1.35; letter-spacing: -0.005em;
+  font-weight: 700;
+}
+.story-card-translation {
+  font-size: 13px; color: var(--muted); font-style: italic;
+}
+.story-card-excerpt {
+  font-size: 13px; color: var(--text); line-height: 1.5;
+}
+.story-card-link {
+  margin-top: auto;
+  font-size: 13px; font-weight: 600;
+  align-self: flex-start;
+}
+.story-disclaimer {
+  margin-top: 28px;
+  font-size: 12px; color: var(--muted);
+  border-top: 1px solid var(--line);
+  padding-top: 14px;
+  max-width: 72ch;
 }

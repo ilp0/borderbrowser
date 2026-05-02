@@ -15,6 +15,8 @@ export {
   snapshotJsonLdOriginals,
 } from "./extract-jsonld.ts";
 export type { JsonLdExtractResult } from "./extract-jsonld.ts";
+export type { ApplyOptions } from "./apply.ts";
+export { isRtl } from "../rtl.ts";
 export type {
   PlaceholderInfo,
   TranslationUnit,

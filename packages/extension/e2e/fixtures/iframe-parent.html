@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="fi">
+  <head>
+    <meta charset="utf-8" />
+    <title>BorderBrowser iframe parent fixture</title>
+    <style>
+      body {
+        font-family: -apple-system, "Segoe UI", sans-serif;
+        margin: 24px;
+        line-height: 1.5;
+      }
+      iframe {
+        width: 100%;
+        height: 240px;
+        border: 1px solid #ccc;
+        margin-top: 16px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Tervetuloa kaupunkiin</h1>
+    <p id="parent-text">
+      Tämä on isäntäsivu. Se sisältää tekstiä, joka pitäisi kääntää,
+      kun BorderBrowser ajaa käännöksen.
+    </p>
+
+    <iframe src="iframe-child.html" title="child"></iframe>
+
+    <pre id="frame-events" style="font-size: 12px; background: #f3f4f6; padding: 8px;"></pre>
+    <script>
+      // Surface every borderbrowser:frame-loaded event the page sees so the
+      // e2e harness can assert the script is loaded in both frames. The
+      // parent only sees its own event; the iframe's same event is fired in
+      // the iframe's document and stays there. The harness must read both.
+      const out = document.getElementById("frame-events");
+      document.addEventListener("borderbrowser:frame-loaded", (e) => {
+        out.textContent +=
+          "parent: " + JSON.stringify(e.detail) + "\n";
+      });
+    </script>
+  </body>
+</html>

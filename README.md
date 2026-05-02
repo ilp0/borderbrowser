@@ -21,8 +21,69 @@ npm install
 cd packages/translator
 cp .env.example .env.local      # add OPENROUTER_API_KEY
 npm test                        # unit tests for placeholder protocol
-npm run translate -- <url> <lang>   # translate a real URL to <lang>
+npm run translate -- <url> --lang <lang>   # translate a real URL to <lang>
 ```
+
+### Extension
+
+```bash
+npm run -w @borderbrowser/extension build
+```
+
+This emits two parallel builds from a single source tree:
+
+- `packages/extension/dist/` — Chrome MV3. Load via `chrome://extensions` → "Load unpacked".
+- `packages/extension/dist-firefox/` — Firefox MV3. Load via `about:debugging#/runtime/this-firefox` → "Load Temporary Add-on" → pick `dist-firefox/manifest.json`.
+
+`webextension-polyfill` is bundled into both so the same source uses the unified `browser.*` namespace at runtime.
+
+### `bb` CLI
+
+The translator package ships a `bb` binary for scripting and testing. Build
+it once, then invoke directly or via `npm link`:
+
+```bash
+npm install
+npm run -w @borderbrowser/translator build   # writes packages/translator/dist/cli.js
+
+# Print version
+node packages/translator/dist/cli.js version
+
+# Extract translation units (no LLM call) as JSON
+node packages/translator/dist/cli.js extract ./fixtures/page.html
+
+# Translate a URL or local file
+OPENROUTER_API_KEY=sk-... node packages/translator/dist/cli.js \
+  translate https://www.lemonde.fr --lang english
+
+# Subcommands
+bb translate <url|file> --lang <lang> [--model <model>] [--out <file>] [--api-key <key>]
+bb extract <url|file>
+bb version
+bb --help
+```
+
+`OPENROUTER_API_KEY`, `OPENROUTER_MODEL`, `OPENROUTER_SITE_URL`, and
+`OPENROUTER_SITE_NAME` are read from the environment.
+
+### End-to-end tests
+
+Playwright lives at the repo root and is shared across all workspaces.
+
+```bash
+npm install
+npm run e2e:install                            # one-time: fetch the Chromium browser
+npm run -w @borderbrowser/homepage build       # the homepage e2e project runs against `astro preview`
+npm run -w @borderbrowser/extension build      # required for the extension project
+npm run e2e                                    # run all e2e projects
+npm run e2e -- --project=homepage              # just the homepage smoke
+npm run e2e -- --project=extension             # just the extension project
+```
+
+The homepage Playwright project starts `astro preview` automatically via
+`webServer` in `playwright.config.ts`, so `npm run e2e` is self-contained once
+the homepage has been built. CI (`.github/workflows/ci.yml`) runs unit tests,
+builds the extension and homepage, then runs `npm run e2e` on every push and PR.
 
 ## Status
 
