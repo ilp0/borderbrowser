@@ -15,34 +15,55 @@ export type LiveExtractResult = {
 };
 
 export function extractFromDom(root: Element): LiveExtractResult {
-  const units: TranslationUnit[] = [];
-  const refs = new Map<number, Element>();
-  let nextId = 1;
+  const ctx: ExtractCtx = { units: [], refs: new Map(), nextId: 1 };
+  for (const child of Array.from(root.childNodes)) visitNode(child, ctx);
+  return { units: ctx.units, refs: ctx.refs };
+}
 
-  const visit = (node: Node): void => {
-    if (node.nodeType !== Node.ELEMENT_NODE) return;
-    const el = node as Element;
-    const tag = el.tagName.toLowerCase();
+/**
+ * Like `extractFromDom`, but treats the given element itself as a candidate
+ * leaf-block (not just its children). Used by the SPA MutationObserver
+ * pipeline where each newly-inserted node may be a leaf-block element.
+ *
+ * The optional `startId` lets callers chain multiple extractions while
+ * keeping ids globally unique within their batch. Returns the next id to
+ * use so callers can thread it forward.
+ */
+export function extractFromNode(
+  node: Element,
+  startId = 1,
+): LiveExtractResult & { nextId: number } {
+  const ctx: ExtractCtx = { units: [], refs: new Map(), nextId: startId };
+  visitNode(node, ctx);
+  return { units: ctx.units, refs: ctx.refs, nextId: ctx.nextId };
+}
 
-    if (isSkip(tag)) return;
+type ExtractCtx = {
+  units: TranslationUnit[];
+  refs: Map<number, Element>;
+  nextId: number;
+};
 
-    if (hasBlockDescendant(el)) {
-      for (const child of Array.from(el.childNodes)) visit(child);
-      return;
-    }
+function visitNode(node: Node, ctx: ExtractCtx): void {
+  if (node.nodeType !== Node.ELEMENT_NODE) return;
+  const el = node as Element;
+  const tag = el.tagName.toLowerCase();
 
-    if (!hasNonWhitespaceText(el)) return;
+  if (isSkip(tag)) return;
 
-    const { text, placeholders } = encodeFromLiveDom(el);
-    if (!text.trim()) return;
+  if (hasBlockDescendant(el)) {
+    for (const child of Array.from(el.childNodes)) visitNode(child, ctx);
+    return;
+  }
 
-    const id = nextId++;
-    units.push({ id, kind: tag, text, placeholders });
-    refs.set(id, el);
-  };
+  if (!hasNonWhitespaceText(el)) return;
 
-  for (const child of Array.from(root.childNodes)) visit(child);
-  return { units, refs };
+  const { text, placeholders } = encodeFromLiveDom(el);
+  if (!text.trim()) return;
+
+  const id = ctx.nextId++;
+  ctx.units.push({ id, kind: tag, text, placeholders });
+  ctx.refs.set(id, el);
 }
 
 export function encodeFromLiveDom(el: Element): {
