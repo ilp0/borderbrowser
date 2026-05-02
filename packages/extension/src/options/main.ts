@@ -2,6 +2,7 @@
  * Options page logic: load current config + secrets, save updates,
  * provide provider quick-switch chips for the base URL.
  */
+import { formatGlossaryText, parseGlossaryText } from "@borderbrowser/translator";
 import {
   DEFAULT_CONFIG,
   getConfig,
@@ -20,6 +21,7 @@ const els = {
   targetLang: $<HTMLInputElement>("#targetLang"),
   model: $<HTMLInputElement>("#model"),
   premiumModel: $<HTMLInputElement>("#premiumModel"),
+  glossary: $<HTMLTextAreaElement>("#glossary"),
   save: $<HTMLButtonElement>("#save"),
   saved: $<HTMLSpanElement>("#saved"),
   chips: document.querySelectorAll<HTMLButtonElement>(".chip"),
@@ -32,6 +34,7 @@ async function load(): Promise<void> {
   els.targetLang.value = cfg.targetLang;
   els.model.value = cfg.model;
   els.premiumModel.value = cfg.premiumModel;
+  els.glossary.value = formatGlossaryText(cfg.glossary);
   syncActiveChip();
 }
 
@@ -65,10 +68,11 @@ els.save.addEventListener("click", async () => {
   const targetLang = els.targetLang.value.trim() || DEFAULT_CONFIG.targetLang;
   const model = els.model.value.trim() || DEFAULT_CONFIG.model;
   const premiumModel = els.premiumModel.value.trim() || DEFAULT_CONFIG.premiumModel;
+  const glossary = parseGlossaryText(els.glossary.value);
   const apiKey = els.apiKey.value.trim();
 
   await Promise.all([
-    setConfig({ baseUrl, targetLang, model, premiumModel }),
+    setConfig({ baseUrl, targetLang, model, premiumModel, glossary }),
     setSecrets({ apiKey }),
   ]);
 

@@ -1,5 +1,7 @@
 import OpenAI from "openai";
 import { z } from "zod";
+import { formatGlossaryForPrompt } from "./glossary.ts";
+import type { Glossary } from "./glossary.ts";
 import type { TranslateOptions, TranslationUnit } from "./types.ts";
 
 export const DEFAULT_MODEL = "anthropic/claude-haiku-4.5";
@@ -37,6 +39,7 @@ export async function translateUnits(
   const model = options.model ?? DEFAULT_MODEL;
   const batchSize = options.batchSize ?? 40;
   const concurrency = options.concurrency ?? 4;
+  const systemPrompt = buildSystemPrompt(options.targetLang, options.glossary);
 
   const client = new OpenAI({
     apiKey,
@@ -62,7 +65,7 @@ export async function translateUnits(
       const idx = nextBatchIdx++;
       if (idx >= batches.length) return;
       const batch = batches[idx]!;
-      const r = await translateBatchWithRetry(client, model, batch, options.targetLang);
+      const r = await translateBatchWithRetry(client, model, batch, systemPrompt);
       for (const t of r.translations) translated.set(t.id, t.text);
       stats.batches++;
       stats.inputTokens += r.usage.inputTokens;
@@ -79,12 +82,12 @@ async function translateBatchWithRetry(
   client: OpenAI,
   model: string,
   batch: TranslationUnit[],
-  targetLang: string,
+  systemPrompt: string,
 ): Promise<{ translations: { id: number; text: string }[]; usage: BatchUsage }> {
   let lastError: unknown;
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
-      return await translateBatch(client, model, batch, targetLang);
+      return await translateBatch(client, model, batch, systemPrompt);
     } catch (err) {
       lastError = err;
       // Backoff: 0.5s, 2s, 8s on retry
@@ -108,7 +111,7 @@ async function translateBatch(
   client: OpenAI,
   model: string,
   batch: TranslationUnit[],
-  targetLang: string,
+  systemPrompt: string,
 ): Promise<{ translations: { id: number; text: string }[]; usage: BatchUsage }> {
   const inputPayload = batch.map((u) => ({ id: u.id, kind: u.kind, text: u.text }));
 
@@ -120,7 +123,7 @@ async function translateBatch(
       content: [
         {
           type: "text",
-          text: buildSystemPrompt(targetLang),
+          text: systemPrompt,
           cache_control: { type: "ephemeral" },
         },
       ],
@@ -183,8 +186,10 @@ function parseTranslations(content: string): { id: number; text: string }[] {
   }
 }
 
-function buildSystemPrompt(targetLang: string): string {
-  return `You are a professional translator. Translate web page content into ${targetLang}.
+export function buildSystemPrompt(targetLang: string, glossary?: Glossary): string {
+  const glossaryBlock = formatGlossaryForPrompt(glossary);
+  const glossarySection = glossaryBlock ? `\n\n${glossaryBlock}` : "";
+  return `You are a professional translator. Translate web page content into ${targetLang}.${glossarySection}
 
 You will receive a JSON array of text snippets, each with:
 - "id": a numeric snippet id

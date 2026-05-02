@@ -1,3 +1,5 @@
+import type { Glossary } from "./glossary.ts";
+
 /**
  * Information stored for each placeholder marker in an encoded translation unit.
  *
@@ -41,6 +43,12 @@ export type TranslateOptions = {
   batchSize?: number;
   /** Concurrent in-flight batches. Defaults to 4. */
   concurrency?: number;
+  /**
+   * User-curated glossary of `term → translation` mappings the LLM must use
+   * verbatim (e.g. for proper nouns the user has a preferred rendering for).
+   * Injected as a system-prompt section. Empty or undefined → no block.
+   */
+  glossary?: Glossary;
 };
 
 export type TranslateResult = {

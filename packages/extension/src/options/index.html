@@ -61,6 +61,26 @@
         </label>
       </section>
 
+      <section class="card">
+        <h2>Glossary</h2>
+        <p class="hint">
+          Force specific translations for proper nouns and terms you care
+          about. One <code>term=translation</code> per line. Blank lines and
+          lines starting with <code>#</code> are ignored.
+        </p>
+
+        <label>
+          <span>Term mappings</span>
+          <textarea
+            id="glossary"
+            rows="8"
+            spellcheck="false"
+            autocomplete="off"
+            placeholder="Helsinki=Helsinki, not Helsingfors&#10;Turku=Turku, not Åbo"
+          ></textarea>
+        </label>
+      </section>
+
       <div class="actions">
         <button class="btn primary" id="save">Save settings</button>
         <span class="saved" id="saved" hidden>Saved.</span>

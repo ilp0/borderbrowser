@@ -4,6 +4,8 @@
  * so they don't sync across devices.
  */
 
+import type { Glossary } from "@borderbrowser/translator";
+
 export type Config = {
   /** Base URL of an OpenAI-compatible chat-completions endpoint. */
   baseUrl: string;
@@ -15,6 +17,11 @@ export type Config = {
   targetLang: string;
   /** Per-domain auto-translate flags. Domain → bool. */
   autoTranslateDomains: Record<string, boolean>;
+  /**
+   * User-curated `term → translation` map. Injected into the translator's
+   * system prompt so the LLM uses these renderings verbatim.
+   */
+  glossary: Glossary;
 };
 
 export type Secrets = {
@@ -31,6 +38,7 @@ export const DEFAULT_CONFIG: Config = {
   premiumModel: "anthropic/claude-sonnet-4.6",
   targetLang: "English",
   autoTranslateDomains: {},
+  glossary: {},
 };
 
 export const DEFAULT_SECRETS: Secrets = {
