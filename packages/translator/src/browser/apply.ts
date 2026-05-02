@@ -25,6 +25,9 @@ export type ApplyOptions = {
  * descendants. For pure-content pages this is fine; SPAs will usually re-render
  * on next state change anyway. A future refinement can re-use the original
  * element nodes for inline placeholders to preserve handlers.
+ *
+ * When `targetLang` is provided, the element's `lang` attribute is set to that
+ * BCP 47 code so screen readers pronounce the new text correctly.
  */
 export function applyTranslation(
   element: Element,
@@ -34,8 +37,11 @@ export function applyTranslation(
 ): void {
   const html = decodeText(translatedText, placeholders);
   element.innerHTML = html;
-  if (options?.targetLang && isRtl(options.targetLang)) {
-    element.setAttribute("dir", "rtl");
+  if (options?.targetLang) {
+    element.setAttribute("lang", options.targetLang);
+    if (isRtl(options.targetLang)) {
+      element.setAttribute("dir", "rtl");
+    }
   }
 }
 
@@ -55,9 +61,11 @@ export function applyTranslationsBatch(
 ): void {
   // Hoist the language check out of the per-element loop.
   const setDir = !!options?.targetLang && isRtl(options.targetLang);
+  const setLang = options?.targetLang;
   for (const { element, translatedText, placeholders } of entries) {
     const html = decodeText(translatedText, placeholders);
     element.innerHTML = html;
+    if (setLang) element.setAttribute("lang", setLang);
     if (setDir) element.setAttribute("dir", "rtl");
   }
 }
