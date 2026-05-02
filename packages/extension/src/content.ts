@@ -10,6 +10,7 @@
  * Calls the background SW for the actual LLM round-trip — never makes the
  * fetch itself, so the API key never leaves chrome.storage.local + the SW.
  */
+import "./lib/browser.ts"; // Cross-browser polyfill (Chrome + Firefox MV3).
 import {
   decodeText,
   extractFromDom,

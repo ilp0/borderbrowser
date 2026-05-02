@@ -24,6 +24,19 @@ npm test                        # unit tests for placeholder protocol
 npm run translate -- <url> --lang <lang>   # translate a real URL to <lang>
 ```
 
+### Extension
+
+```bash
+npm run -w @borderbrowser/extension build
+```
+
+This emits two parallel builds from a single source tree:
+
+- `packages/extension/dist/` — Chrome MV3. Load via `chrome://extensions` → "Load unpacked".
+- `packages/extension/dist-firefox/` — Firefox MV3. Load via `about:debugging#/runtime/this-firefox` → "Load Temporary Add-on" → pick `dist-firefox/manifest.json`.
+
+`webextension-polyfill` is bundled into both so the same source uses the unified `browser.*` namespace at runtime.
+
 ### `bb` CLI
 
 The translator package ships a `bb` binary for scripting and testing. Build
