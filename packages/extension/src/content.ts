@@ -14,6 +14,11 @@ import {
   decodeText,
   extractFromDom,
 } from "@borderbrowser/translator/browser/dom";
+import {
+  computeContentHash,
+  getCached,
+  putCached,
+} from "./lib/cache.ts";
 import { getRuntimeConfig, setConfig } from "./lib/config.ts";
 import {
   type TabRequest,
@@ -128,31 +133,69 @@ async function translatePage(usePremium: boolean): Promise<void> {
     }
 
     const model = usePremium ? cfg.premiumModel : cfg.model;
+    const modelTier = usePremium ? "premium" : "standard";
     const startMs = performance.now();
 
-    const response = await sendToBg({
-      kind: "bg.translate",
+    // Persistent-cache lookup. If we've already translated *this exact set
+    // of original units* for *this URL/language/tier*, skip the IPC entirely
+    // and reuse the result. The atomic-swap pass below stays the same — we
+    // just feed it the cached translations array instead of a fresh one.
+    const contentHash = await computeContentHash(units);
+    const cacheKey = {
+      url: location.href,
+      contentHash,
       targetLang: cfg.targetLang,
-      model,
-      baseUrl: cfg.baseUrl,
-      apiKey: cfg.apiKey,
-      units: units.map((u) => ({ id: u.id, kind: u.kind, text: u.text })),
-    });
+      modelTier,
+    };
+    const cached = await getCached(cacheKey);
 
-    const elapsedMs = Math.round(performance.now() - startMs);
+    let translationList: { id: number; text: string }[];
+    let stats: NonNullable<TabStatus["lastStats"]>;
 
-    debug("bg-response", { ok: response.ok, kind: response.kind });
+    if (cached) {
+      debug("cache-hit", { units: units.length });
+      translationList = cached;
+      stats = {
+        units: units.length,
+        elapsedMs: Math.round(performance.now() - startMs),
+        inputTokens: 0,
+        outputTokens: 0,
+      };
+    } else {
+      const response = await sendToBg({
+        kind: "bg.translate",
+        targetLang: cfg.targetLang,
+        model,
+        baseUrl: cfg.baseUrl,
+        apiKey: cfg.apiKey,
+        units: units.map((u) => ({ id: u.id, kind: u.kind, text: u.text })),
+      });
 
-    if (!response.ok || response.kind !== "bg.translateResult") {
-      const msg = response.kind === "error" ? response.message : "Translation failed.";
-      debug("bg-error", { msg });
-      showOverlayMessage(msg, "error");
-      await sleep(2400);
-      hideOverlay();
-      return;
+      debug("bg-response", { ok: response.ok, kind: response.kind });
+
+      if (!response.ok || response.kind !== "bg.translateResult") {
+        const msg = response.kind === "error" ? response.message : "Translation failed.";
+        debug("bg-error", { msg });
+        showOverlayMessage(msg, "error");
+        await sleep(2400);
+        hideOverlay();
+        return;
+      }
+
+      translationList = response.translations;
+      stats = {
+        units: units.length,
+        elapsedMs: Math.round(performance.now() - startMs),
+        inputTokens: response.stats.inputTokens,
+        outputTokens: response.stats.outputTokens,
+      };
+
+      // Fire-and-forget: persist for next visit. Don't block the swap.
+      void putCached(cacheKey, translationList).catch(() => {});
     }
 
-    const translations = new Map(response.translations.map((t) => [t.id, t.text]));
+    const elapsedMs = stats.elapsedMs;
+    const translations = new Map(translationList.map((t) => [t.id, t.text]));
 
     // Pre-compute everything BEFORE we touch the DOM, so the swap is atomic.
     const updates: { el: Element; html: string }[] = [];
@@ -173,12 +216,7 @@ async function translatePage(usePremium: boolean): Promise<void> {
       translatedElements.add(el);
     }
     pageState = "translated";
-    lastStats = {
-      units: units.length,
-      elapsedMs,
-      inputTokens: response.stats.inputTokens,
-      outputTokens: response.stats.outputTokens,
-    };
+    lastStats = stats;
     debug("done", { units: units.length, elapsedMs, applied: updates.length });
 
     hideOverlay();
