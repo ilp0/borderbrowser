@@ -80,16 +80,18 @@ export async function logUsage(
     usage: Usage;
     upstreamCostMicros: number;
     creditsCharged: number;
+    cacheHit?: boolean;
   },
 ): Promise<void> {
   await sql`
     INSERT INTO usage_log (
       api_key_id, model, input_tokens, output_tokens,
-      cached_input_tokens, upstream_cost_micros, credits_charged
+      cached_input_tokens, upstream_cost_micros, credits_charged, cache_hit
     ) VALUES (
       ${args.apiKeyId}, ${args.model}, ${args.usage.inputTokens},
       ${args.usage.outputTokens}, ${args.usage.cachedInputTokens},
-      ${args.upstreamCostMicros}, ${args.creditsCharged}
+      ${args.upstreamCostMicros}, ${args.creditsCharged},
+      ${args.cacheHit ?? false}
     )
   `;
 }

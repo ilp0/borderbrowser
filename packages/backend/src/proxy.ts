@@ -11,6 +11,7 @@
  */
 
 import { Hono } from "hono";
+import { cacheGet, cacheKey, cachePut, type ChatMessage } from "./cache.ts";
 import {
   db,
   deductCredits,
@@ -50,10 +51,41 @@ proxy.post("/v1/chat/completions", async (c) => {
     );
   }
 
-  const body = await c.req.json<{ model?: string; stream?: boolean; messages?: unknown[] }>();
+  const body = await c.req.json<{ model?: string; stream?: boolean; messages?: ChatMessage[] }>();
   const model = body.model ?? "";
   if (!(model in PRICES)) {
     return jsonError(c, 400, "model_not_supported", `Model "${model}" is not enabled on BorderBrowser.`);
+  }
+
+  // Edge cache (Vision §8). Opt-in per request via header. Streaming is not
+  // cached: the upside is small (the body is consumed once) and the wiring
+  // would either buffer the stream or replay it as SSE — both ugly.
+  const cacheOptIn = c.req.header("x-bb-cache") === "1" && !body.stream;
+  const targetLang = c.req.header("x-bb-target-lang") ?? "";
+  let bbCacheKey: string | null = null;
+  if (cacheOptIn) {
+    bbCacheKey = await cacheKey(model, targetLang, body.messages ?? []);
+    const cached = await cacheGet(c.env, bbCacheKey);
+    if (cached) {
+      // Hit. Charge nothing; record the event so we can measure hit rate.
+      c.executionCtx.waitUntil(
+        logUsage(sql, {
+          apiKeyId: key.id,
+          model,
+          usage: { inputTokens: 0, outputTokens: 0, cachedInputTokens: 0 },
+          upstreamCostMicros: 0,
+          creditsCharged: 0,
+          cacheHit: true,
+        }),
+      );
+      return new Response(cached, {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          "X-BB-Cache": "HIT",
+        },
+      });
+    }
   }
 
   // Forward to OpenRouter. We keep their streaming behavior intact.
@@ -96,6 +128,7 @@ proxy.post("/v1/chat/completions", async (c) => {
   const usage = readUsage(json);
   const upstreamMicros = upstreamCostMicros(model, usage);
   const charge = withMargin(upstreamMicros, parseInt(c.env.MARGIN_BPS, 10));
+  const responseBody = JSON.stringify(json);
 
   c.executionCtx.waitUntil(
     (async () => {
@@ -107,12 +140,18 @@ proxy.post("/v1/chat/completions", async (c) => {
         upstreamCostMicros: upstreamMicros,
         creditsCharged: charge,
       });
+      if (bbCacheKey) {
+        await cachePut(c.env, bbCacheKey, responseBody);
+      }
     })(),
   );
 
-  return new Response(JSON.stringify(json), {
+  return new Response(responseBody, {
     status: 200,
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...(bbCacheKey ? { "X-BB-Cache": "MISS" } : {}),
+    },
   });
 });
 
