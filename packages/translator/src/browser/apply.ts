@@ -1,5 +1,21 @@
 import { decodeText } from "../placeholders.ts";
+import { isRtl } from "../rtl.ts";
 import type { PlaceholderInfo } from "../types.ts";
+
+/** Optional knobs that affect how a translated element is written back. */
+export type ApplyOptions = {
+  /**
+   * Target language for the translation, e.g. "ar", "he-IL", "Arabic",
+   * "فارسی". When this resolves to an RTL language (see `isRtl`), the
+   * element gets `dir="rtl"` so punctuation, bullets, and bidi-neutral
+   * characters flow the right way.
+   *
+   * Inline LTR runs (URLs, code spans, numbers) still appear LTR — they
+   * round-trip through placeholders untouched and the Unicode bidi
+   * algorithm handles the local direction inside an RTL block.
+   */
+  targetLang?: string;
+};
 
 /**
  * Splice a translated string back into a live DOM element.
@@ -17,11 +33,16 @@ export function applyTranslation(
   element: Element,
   translatedText: string,
   placeholders: Map<number, PlaceholderInfo>,
-  targetLang?: string,
+  options?: ApplyOptions,
 ): void {
   const html = decodeText(translatedText, placeholders);
   element.innerHTML = html;
-  if (targetLang) element.setAttribute("lang", targetLang);
+  if (options?.targetLang) {
+    element.setAttribute("lang", options.targetLang);
+    if (isRtl(options.targetLang)) {
+      element.setAttribute("dir", "rtl");
+    }
+  }
 }
 
 /**
@@ -36,9 +57,15 @@ export function applyTranslationsBatch(
     translatedText: string;
     placeholders: Map<number, PlaceholderInfo>;
   }>,
-  targetLang?: string,
+  options?: ApplyOptions,
 ): void {
+  // Hoist the language check out of the per-element loop.
+  const setDir = !!options?.targetLang && isRtl(options.targetLang);
+  const setLang = options?.targetLang;
   for (const { element, translatedText, placeholders } of entries) {
-    applyTranslation(element, translatedText, placeholders, targetLang);
+    const html = decodeText(translatedText, placeholders);
+    element.innerHTML = html;
+    if (setLang) element.setAttribute("lang", setLang);
+    if (setDir) element.setAttribute("dir", "rtl");
   }
 }
