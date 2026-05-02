@@ -140,3 +140,89 @@ export async function topUpAlreadyApplied(
   `) as { "?column?": number }[];
   return rows.length > 0;
 }
+
+// --- Pro subscriptions ($8/mo) ----------------------------------------------
+
+export type SubscriptionStatus = "active" | "cancelled" | "past_due";
+
+export type SubscriptionRow = {
+  id: number;
+  api_key_id: number;
+  stripe_subscription_id: string;
+  stripe_customer_id: string;
+  status: SubscriptionStatus;
+  current_period_end: string | null;
+};
+
+export async function findSubscriptionByApiKey(
+  sql: Db,
+  apiKeyId: number,
+): Promise<SubscriptionRow | null> {
+  const rows = (await sql`
+    SELECT id, api_key_id, stripe_subscription_id, stripe_customer_id,
+           status, current_period_end
+    FROM subscriptions
+    WHERE api_key_id = ${apiKeyId}
+    ORDER BY created_at DESC
+    LIMIT 1
+  `) as SubscriptionRow[];
+  return rows[0] ?? null;
+}
+
+/**
+ * Insert or update a subscription, keyed on stripe_subscription_id. Idempotent
+ * — webhooks for create + update on the same sub converge to one row.
+ */
+export async function upsertSubscription(
+  sql: Db,
+  args: {
+    apiKeyId: number;
+    stripeSubscriptionId: string;
+    stripeCustomerId: string;
+    status: SubscriptionStatus;
+    currentPeriodEnd: Date | null;
+  },
+): Promise<void> {
+  await sql`
+    INSERT INTO subscriptions (
+      api_key_id, stripe_subscription_id, stripe_customer_id,
+      status, current_period_end
+    ) VALUES (
+      ${args.apiKeyId}, ${args.stripeSubscriptionId}, ${args.stripeCustomerId},
+      ${args.status}, ${args.currentPeriodEnd}
+    )
+    ON CONFLICT (stripe_subscription_id) DO UPDATE SET
+      status = EXCLUDED.status,
+      current_period_end = EXCLUDED.current_period_end,
+      updated_at = now()
+  `;
+}
+
+export async function setSubscriptionStatus(
+  sql: Db,
+  args: {
+    stripeSubscriptionId: string;
+    status: SubscriptionStatus;
+    currentPeriodEnd?: Date | null;
+  },
+): Promise<void> {
+  await sql`
+    UPDATE subscriptions
+    SET status = ${args.status},
+        current_period_end = COALESCE(${args.currentPeriodEnd ?? null}, current_period_end),
+        updated_at = now()
+    WHERE stripe_subscription_id = ${args.stripeSubscriptionId}
+  `;
+}
+
+/** True if the user currently has an active sub whose period hasn't lapsed. */
+export async function isPro(sql: Db, apiKeyId: number): Promise<boolean> {
+  const rows = (await sql`
+    SELECT 1 FROM subscriptions
+    WHERE api_key_id = ${apiKeyId}
+      AND status = 'active'
+      AND (current_period_end IS NULL OR current_period_end > now())
+    LIMIT 1
+  `) as { "?column?": number }[];
+  return rows.length > 0;
+}

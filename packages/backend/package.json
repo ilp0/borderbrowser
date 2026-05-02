@@ -7,7 +7,8 @@
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
     "migrate:local": "wrangler d1 execute borderbrowser --local --file=./migrations/001_init.sql",
-    "tail": "wrangler tail"
+    "tail": "wrangler tail",
+    "test": "node --test --import tsx/esm test/*.test.ts"
   },
   "dependencies": {
     "hono": "^4.6.14",
