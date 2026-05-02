@@ -3,14 +3,18 @@
   "version": "0.0.1",
   "private": true,
   "type": "module",
+  "bin": {
+    "bb": "./dist/cli.js"
+  },
   "exports": {
     ".": "./src/index.ts",
     "./browser": "./src/browser/index.ts",
     "./browser/dom": "./src/browser/dom-only.ts"
   },
   "scripts": {
+    "build": "tsc -p tsconfig.build.json && node -e \"require('node:fs').chmodSync('dist/cli.js', 0o755)\"",
     "test": "node --test --import tsx/esm test/*.test.ts",
-    "translate": "node --env-file-if-exists=.env.local --import tsx/esm src/cli.ts"
+    "translate": "node --env-file-if-exists=.env.local --import tsx/esm src/cli.ts translate"
   },
   "dependencies": {
     "cheerio": "^1.0.0",
