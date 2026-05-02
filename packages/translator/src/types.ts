@@ -1,3 +1,7 @@
+import type { LocalizeOptions } from "./localize.ts";
+
+export type { LocalizeOptions, UnitSystem } from "./localize.ts";
+
 /**
  * Information stored for each placeholder marker in an encoded translation unit.
  *
@@ -41,6 +45,11 @@ export type TranslateOptions = {
   batchSize?: number;
   /** Concurrent in-flight batches. Defaults to 4. */
   concurrency?: number;
+  /**
+   * Optional post-translation localization (number/date/unit/currency).
+   * When omitted, the localize pass is skipped entirely.
+   */
+  localize?: LocalizeOptions;
 };
 
 export type TranslateResult = {
