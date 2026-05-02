@@ -15,6 +15,8 @@ export type Config = {
   targetLang: string;
   /** Per-domain auto-translate flags. Domain → bool. */
   autoTranslateDomains: Record<string, boolean>;
+  /** Domains where reading mode should auto-enable on page load. */
+  readingModeDomains: string[];
 };
 
 export type Secrets = {
@@ -31,6 +33,7 @@ export const DEFAULT_CONFIG: Config = {
   premiumModel: "anthropic/claude-sonnet-4.6",
   targetLang: "English",
   autoTranslateDomains: {},
+  readingModeDomains: [],
 };
 
 export const DEFAULT_SECRETS: Secrets = {

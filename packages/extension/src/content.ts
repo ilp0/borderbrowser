@@ -14,13 +14,14 @@ import {
   decodeText,
   extractFromDom,
 } from "@borderbrowser/translator/browser/dom";
-import { getRuntimeConfig, setConfig } from "./lib/config.ts";
+import { getConfig, getRuntimeConfig, setConfig } from "./lib/config.ts";
 import {
   type TabRequest,
   type TabResponse,
   type TabStatus,
   sendToBg,
 } from "./lib/messages.ts";
+import * as readingMode from "./lib/reading-mode.ts";
 
 type CacheEntry = { original: string; translated: string };
 const cache: WeakMap<Element, CacheEntry> = new WeakMap();
@@ -55,6 +56,9 @@ async function handleMessage(req: TabRequest): Promise<TabResponse> {
     case "tab.showTranslated":
       showState("translated");
       return { kind: "tab.ack", ok: true };
+    case "tab.toggleReadingMode":
+      await handleToggleReadingMode(req.enabled);
+      return { kind: "tab.ack", ok: true };
     case "tab.getStatus":
       return {
         kind: "tab.status",
@@ -64,8 +68,31 @@ async function handleMessage(req: TabRequest): Promise<TabResponse> {
           showing: pageState,
           ...(lastStats ? { lastStats } : {}),
           busy,
+          readingMode: readingMode.isEnabled(),
         },
       };
+  }
+}
+
+async function handleToggleReadingMode(explicit?: boolean): Promise<void> {
+  const shouldEnable =
+    explicit === undefined ? !readingMode.isEnabled() : explicit;
+
+  // If enable() couldn't find an article we don't persist — would auto-fail
+  // again next load.
+  const ok = shouldEnable ? readingMode.enable() : (readingMode.disable(), true);
+  if (!ok) return;
+
+  const host = location.hostname;
+  if (!host) return;
+  try {
+    const cfg = await getConfig();
+    const set = new Set(cfg.readingModeDomains);
+    if (shouldEnable) set.add(host);
+    else set.delete(host);
+    await setConfig({ readingModeDomains: Array.from(set) });
+  } catch (err) {
+    console.warn("[BorderBrowser] failed to persist reading mode pref", err);
   }
 }
 
@@ -402,3 +429,16 @@ console.log("[BorderBrowser] content script loaded", {
 if (location.hash.includes("bb-translate")) {
   setTimeout(() => void translatePage(false), 800);
 }
+
+// Auto-enable reading mode if this domain is in the user's saved list.
+void (async () => {
+  try {
+    const cfg = await getConfig();
+    const host = location.hostname;
+    if (host && cfg.readingModeDomains?.includes(host)) {
+      readingMode.enable();
+    }
+  } catch {
+    // chrome.storage may be unavailable in odd contexts; non-fatal.
+  }
+})();
