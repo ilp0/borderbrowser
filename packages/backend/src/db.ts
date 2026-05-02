@@ -11,7 +11,7 @@ export type ApiKeyRow = {
   id: number;
   key_hash: string;
   key_prefix: string;
-  email: string;
+  email: string | null;
   credits_remaining: number;
   total_credits_purchased: number;
   revoked: boolean;
@@ -34,7 +34,7 @@ export async function findKeyByHash(sql: Db, hash: string): Promise<ApiKeyRow | 
 
 export async function insertApiKey(
   sql: Db,
-  args: { keyHash: string; keyPrefix: string; email: string },
+  args: { keyHash: string; keyPrefix: string; email: string | null },
 ): Promise<number> {
   const rows = (await sql`
     INSERT INTO api_keys (key_hash, key_prefix, email)
@@ -45,6 +45,7 @@ export async function insertApiKey(
 }
 
 export async function findKeyByEmail(sql: Db, email: string): Promise<ApiKeyRow | null> {
+  // Anonymous keys have email = NULL and are never matched here by design.
   const rows = (await sql`
     SELECT id, key_hash, key_prefix, email, credits_remaining,
            total_credits_purchased, revoked
@@ -54,6 +55,38 @@ export async function findKeyByEmail(sql: Db, email: string): Promise<ApiKeyRow 
     LIMIT 1
   `) as ApiKeyRow[];
   return rows[0] ?? null;
+}
+
+/**
+ * Anonymous-flow key pickup: stash the raw key briefly so the success page
+ * can retrieve it by Stripe session id (no email = no other delivery channel).
+ * This is the only place a raw key lands in our DB.
+ */
+export async function stashAnonKey(
+  sql: Db,
+  args: { stripeSessionId: string; apiKey: string },
+): Promise<void> {
+  await sql`
+    INSERT INTO anon_key_pickup (stripe_session_id, api_key)
+    VALUES (${args.stripeSessionId}, ${args.apiKey})
+    ON CONFLICT (stripe_session_id) DO NOTHING
+  `;
+}
+
+/**
+ * Single-read retrieval of an anonymous key. Deletes the row on the way out so
+ * the raw key never lingers. Returns null if already retrieved or unknown.
+ */
+export async function popAnonKey(
+  sql: Db,
+  stripeSessionId: string,
+): Promise<string | null> {
+  const rows = (await sql`
+    DELETE FROM anon_key_pickup
+    WHERE stripe_session_id = ${stripeSessionId}
+    RETURNING api_key
+  `) as { api_key: string }[];
+  return rows[0]?.api_key ?? null;
 }
 
 /** Atomically deduct credits and bump last_used_at. Returns new balance. */
