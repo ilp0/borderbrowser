@@ -51,6 +51,7 @@ export type TabRequest =
   | { kind: "tab.translatePage"; usePremium?: boolean }
   | { kind: "tab.showOriginal" }
   | { kind: "tab.showTranslated" }
+  | { kind: "tab.toggleOriginal" }
   | { kind: "tab.getStatus" };
 
 export type TabStatus = {

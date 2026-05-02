@@ -55,6 +55,13 @@ async function handleMessage(req: TabRequest): Promise<TabResponse> {
     case "tab.showTranslated":
       showState("translated");
       return { kind: "tab.ack", ok: true };
+    case "tab.toggleOriginal":
+      // No-op when nothing has been translated yet — leave the page alone so
+      // the keyboard shortcut doesn't surprise users on un-translated pages.
+      if (translatedElements.size > 0) {
+        showState(pageState === "translated" ? "original" : "translated");
+      }
+      return { kind: "tab.ack", ok: true };
     case "tab.getStatus":
       return {
         kind: "tab.status",
