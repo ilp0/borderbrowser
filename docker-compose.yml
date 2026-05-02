@@ -1,0 +1,65 @@
+# Self-host the BorderBrowser backend with a single `docker compose up`.
+#
+# Required env vars (in a .env file beside this docker-compose.yml, or
+# exported in your shell):
+#
+#   STRIPE_SECRET_KEY        sk_test_... or sk_live_...
+#   STRIPE_WEBHOOK_SECRET    whsec_... (from `stripe listen` or your dashboard)
+#   RESEND_API_KEY           re_...
+#   OPENROUTER_KEY           sk-or-v1-...
+#
+# Optional:
+#   PUBLIC_BASE_URL   default: http://localhost:8787
+#   HOMEPAGE_URL      default: http://localhost:8787
+#   EMAIL_FROM        default: BorderBrowser <noreply@localhost>
+#   MARGIN_BPS        default: 3000  (30%)
+#   POSTGRES_PASSWORD default: borderbrowser
+#
+# After `docker compose up`, run the migration once:
+#   docker compose exec db psql -U borderbrowser -d borderbrowser \
+#     -f /migrations/001_init.sql
+#
+# Then point your extension's "API base URL" setting at http://localhost:8787/v1.
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: borderbrowser
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-borderbrowser}
+      POSTGRES_DB: borderbrowser
+    volumes:
+      - db-data:/var/lib/postgresql/data
+      - ./packages/backend/migrations:/migrations:ro
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U borderbrowser -d borderbrowser"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: .
+      dockerfile: packages/backend/Dockerfile
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://borderbrowser:${POSTGRES_PASSWORD:-borderbrowser}@db:5432/borderbrowser
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:?STRIPE_SECRET_KEY is required}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:?STRIPE_WEBHOOK_SECRET is required}
+      RESEND_API_KEY: ${RESEND_API_KEY:?RESEND_API_KEY is required}
+      OPENROUTER_KEY: ${OPENROUTER_KEY:?OPENROUTER_KEY is required}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:8787}
+      HOMEPAGE_URL: ${HOMEPAGE_URL:-http://localhost:8787}
+      EMAIL_FROM: ${EMAIL_FROM:-BorderBrowser <noreply@localhost>}
+      MARGIN_BPS: ${MARGIN_BPS:-3000}
+      PORT: "8787"
+    ports:
+      - "8787:8787"
+    restart: unless-stopped
+
+volumes:
+  db-data:

@@ -1,3 +1,7 @@
+import type { LocalizeOptions } from "./localize.ts";
+
+export type { LocalizeOptions, UnitSystem } from "./localize.ts";
+
 /**
  * Information stored for each placeholder marker in an encoded translation unit.
  *
@@ -42,6 +46,10 @@ export type TranslateOptions = {
   /** Concurrent in-flight batches. Defaults to 4. */
   concurrency?: number;
   /**
+   * Optional post-translation localization (number/date/unit/currency).
+   * When omitted, the localize pass is skipped entirely.
+   */
+  localize?: LocalizeOptions;
    * Document-level coherence: when a page needs more than one batch, prepend
    * the last `contextOverlapChars` characters of batch (n-1)'s translated
    * output to batch n as a separate "previous context" user message so names,
