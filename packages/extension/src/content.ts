@@ -11,7 +11,9 @@
  * fetch itself, so the API key never leaves chrome.storage.local + the SW.
  */
 import {
+  type AttrRef,
   decodeText,
+  extractAttrsFromDom,
   extractFromDom,
 } from "@borderbrowser/translator/browser/dom";
 import { getRuntimeConfig, setConfig } from "./lib/config.ts";
@@ -25,6 +27,15 @@ import {
 type CacheEntry = { original: string; translated: string };
 const cache: WeakMap<Element, CacheEntry> = new WeakMap();
 const translatedElements = new Set<Element>();
+
+/**
+ * Per-attribute toggle cache. The element-level `cache` keys by element only
+ * because `innerHTML` is one slot; attrs need an inner map keyed by attr name.
+ */
+type AttrCacheEntry = { original: string; translated: string };
+const attrCache: WeakMap<Element, Map<string, AttrCacheEntry>> = new WeakMap();
+const translatedAttrElements = new Set<Element>();
+
 let pageState: "original" | "translated" = "original";
 let busy = false;
 let lastStats: TabStatus["lastStats"];
@@ -60,7 +71,8 @@ async function handleMessage(req: TabRequest): Promise<TabResponse> {
         kind: "tab.status",
         ok: true,
         status: {
-          translated: translatedElements.size > 0,
+          translated:
+            translatedElements.size > 0 || translatedAttrElements.size > 0,
           showing: pageState,
           ...(lastStats ? { lastStats } : {}),
           busy,
@@ -111,9 +123,18 @@ async function translatePage(usePremium: boolean): Promise<void> {
 
     const root = document.documentElement;
     const { units, refs } = extractFromDom(root);
-    debug("extracted", { units: units.length, totalChars: units.reduce((n, u) => n + u.text.length, 0) });
+    // Continue id allocation past the block units so attr ids never collide.
+    const nextStartId = (units.at(-1)?.id ?? 0) + 1;
+    const { units: attrUnits, refs: attrRefs } = extractAttrsFromDom(root, nextStartId);
+    debug("extracted", {
+      units: units.length,
+      attrUnits: attrUnits.length,
+      totalChars:
+        units.reduce((n, u) => n + u.text.length, 0) +
+        attrUnits.reduce((n, u) => n + u.text.length, 0),
+    });
 
-    if (units.length === 0) {
+    if (units.length === 0 && attrUnits.length === 0) {
       showOverlayMessage("Nothing translatable on this page.", "info");
       await sleep(1400);
       hideOverlay();
@@ -126,6 +147,18 @@ async function translatePage(usePremium: boolean): Promise<void> {
       if (!el) continue;
       if (!cache.has(el)) cache.set(el, { original: el.innerHTML, translated: "" });
     }
+    for (const u of attrUnits) {
+      const ref = attrRefs.get(u.id);
+      if (!ref) continue;
+      let perEl = attrCache.get(ref.element);
+      if (!perEl) {
+        perEl = new Map();
+        attrCache.set(ref.element, perEl);
+      }
+      if (!perEl.has(ref.attrName)) {
+        perEl.set(ref.attrName, { original: ref.originalValue, translated: "" });
+      }
+    }
 
     const model = usePremium ? cfg.premiumModel : cfg.model;
     const startMs = performance.now();
@@ -136,7 +169,11 @@ async function translatePage(usePremium: boolean): Promise<void> {
       model,
       baseUrl: cfg.baseUrl,
       apiKey: cfg.apiKey,
-      units: units.map((u) => ({ id: u.id, kind: u.kind, text: u.text })),
+      units: [...units, ...attrUnits].map((u) => ({
+        id: u.id,
+        kind: u.kind,
+        text: u.text,
+      })),
     });
 
     const elapsedMs = Math.round(performance.now() - startMs);
@@ -164,6 +201,14 @@ async function translatePage(usePremium: boolean): Promise<void> {
       const html = decodeText(t, u.placeholders);
       updates.push({ el, html });
     }
+    const attrUpdates: { ref: AttrRef; translatedValue: string }[] = [];
+    for (const u of attrUnits) {
+      const t = translations.get(u.id);
+      if (t === undefined) continue;
+      const ref = attrRefs.get(u.id);
+      if (!ref) continue;
+      attrUpdates.push({ ref, translatedValue: t });
+    }
 
     await nextFrame();
     for (const { el, html } of updates) {
@@ -172,14 +217,26 @@ async function translatePage(usePremium: boolean): Promise<void> {
       el.innerHTML = html;
       translatedElements.add(el);
     }
+    for (const { ref, translatedValue } of attrUpdates) {
+      const perEl = attrCache.get(ref.element);
+      const entry = perEl?.get(ref.attrName);
+      if (entry) entry.translated = translatedValue;
+      ref.element.setAttribute(ref.attrName, translatedValue);
+      translatedAttrElements.add(ref.element);
+    }
     pageState = "translated";
     lastStats = {
-      units: units.length,
+      units: units.length + attrUnits.length,
       elapsedMs,
       inputTokens: response.stats.inputTokens,
       outputTokens: response.stats.outputTokens,
     };
-    debug("done", { units: units.length, elapsedMs, applied: updates.length });
+    debug("done", {
+      units: units.length,
+      attrUnits: attrUnits.length,
+      elapsedMs,
+      applied: updates.length + attrUpdates.length,
+    });
 
     hideOverlay();
   } catch (err) {
@@ -214,6 +271,14 @@ function showState(s: "original" | "translated"): void {
     if (!entry) continue;
     if (s === "original") el.innerHTML = entry.original;
     else el.innerHTML = entry.translated;
+  }
+  for (const el of translatedAttrElements) {
+    const perEl = attrCache.get(el);
+    if (!perEl) continue;
+    for (const [attrName, entry] of perEl) {
+      const value = s === "original" ? entry.original : entry.translated;
+      if (value !== "") el.setAttribute(attrName, value);
+    }
   }
   pageState = s;
 }

@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8">
+    <title>Démo des attributs</title>
+    <meta name="description" content="Une page de démonstration pour tester la traduction des attributs HTML.">
+    <meta property="og:title" content="Démo OpenGraph">
+    <meta property="og:description" content="Description OpenGraph pour les aperçus de liens.">
+    <meta name="twitter:title" content="Démo Twitter">
+    <meta name="twitter:description" content="Description pour les cartes Twitter.">
+  </head>
+  <body>
+    <h1>Page de démonstration</h1>
+
+    <p>
+      <img src="https://example.com/picture.png"
+           alt="Une photo descriptive"
+           title="Survolez pour plus de détails">
+    </p>
+
+    <form>
+      <label>
+        Recherche :
+        <input type="search" placeholder="Recherche">
+      </label>
+      <button aria-label="Fermer la boîte de dialogue" type="button">×</button>
+      <input type="submit" value="Envoyer">
+      <input type="button" value="Annuler">
+    </form>
+
+    <a href="/about" title="À propos de nous">À propos</a>
+
+    <div aria-description="Cette zone contient des informations supplémentaires.">
+      Information complémentaire.
+    </div>
+  </body>
+</html>
