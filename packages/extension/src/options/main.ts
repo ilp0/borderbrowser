@@ -4,6 +4,7 @@
  */
 import {
   DEFAULT_CONFIG,
+  type Tone,
   getConfig,
   getSecrets,
   setConfig,
@@ -23,7 +24,27 @@ const els = {
   save: $<HTMLButtonElement>("#save"),
   saved: $<HTMLSpanElement>("#saved"),
   chips: document.querySelectorAll<HTMLButtonElement>(".chip"),
+  toneRadios: document.querySelectorAll<HTMLInputElement>(
+    'input[name="tone"]',
+  ),
 };
+
+const TONE_VALUES: ReadonlySet<Tone> = new Set(["formal", "neutral", "casual"]);
+
+function getSelectedTone(): Tone {
+  for (const r of Array.from(els.toneRadios)) {
+    if (r.checked && TONE_VALUES.has(r.value as Tone)) {
+      return r.value as Tone;
+    }
+  }
+  return DEFAULT_CONFIG.tone;
+}
+
+function setSelectedTone(tone: Tone): void {
+  for (const r of Array.from(els.toneRadios)) {
+    r.checked = r.value === tone;
+  }
+}
 
 async function load(): Promise<void> {
   const [cfg, sec] = await Promise.all([getConfig(), getSecrets()]);
@@ -32,6 +53,7 @@ async function load(): Promise<void> {
   els.targetLang.value = cfg.targetLang;
   els.model.value = cfg.model;
   els.premiumModel.value = cfg.premiumModel;
+  setSelectedTone(cfg.tone);
   syncActiveChip();
 }
 
@@ -67,8 +89,10 @@ els.save.addEventListener("click", async () => {
   const premiumModel = els.premiumModel.value.trim() || DEFAULT_CONFIG.premiumModel;
   const apiKey = els.apiKey.value.trim();
 
+  const tone = getSelectedTone();
+
   await Promise.all([
-    setConfig({ baseUrl, targetLang, model, premiumModel }),
+    setConfig({ baseUrl, targetLang, tone, model, premiumModel }),
     setSecrets({ apiKey }),
   ]);
 

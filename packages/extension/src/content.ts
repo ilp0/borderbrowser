@@ -133,6 +133,7 @@ async function translatePage(usePremium: boolean): Promise<void> {
     const response = await sendToBg({
       kind: "bg.translate",
       targetLang: cfg.targetLang,
+      tone: cfg.tone,
       model,
       baseUrl: cfg.baseUrl,
       apiKey: cfg.apiKey,

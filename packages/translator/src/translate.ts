@@ -1,6 +1,6 @@
 import OpenAI from "openai";
 import { z } from "zod";
-import type { TranslateOptions, TranslationUnit } from "./types.ts";
+import type { Tone, TranslateOptions, TranslationUnit } from "./types.ts";
 
 export const DEFAULT_MODEL = "anthropic/claude-haiku-4.5";
 const DEFAULT_BASE_URL = "https://openrouter.ai/api/v1";
@@ -62,7 +62,7 @@ export async function translateUnits(
       const idx = nextBatchIdx++;
       if (idx >= batches.length) return;
       const batch = batches[idx]!;
-      const r = await translateBatchWithRetry(client, model, batch, options.targetLang);
+      const r = await translateBatchWithRetry(client, model, batch, options.targetLang, options.tone);
       for (const t of r.translations) translated.set(t.id, t.text);
       stats.batches++;
       stats.inputTokens += r.usage.inputTokens;
@@ -80,11 +80,12 @@ async function translateBatchWithRetry(
   model: string,
   batch: TranslationUnit[],
   targetLang: string,
+  tone: Tone | undefined,
 ): Promise<{ translations: { id: number; text: string }[]; usage: BatchUsage }> {
   let lastError: unknown;
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
-      return await translateBatch(client, model, batch, targetLang);
+      return await translateBatch(client, model, batch, targetLang, tone);
     } catch (err) {
       lastError = err;
       // Backoff: 0.5s, 2s, 8s on retry
@@ -109,6 +110,7 @@ async function translateBatch(
   model: string,
   batch: TranslationUnit[],
   targetLang: string,
+  tone: Tone | undefined,
 ): Promise<{ translations: { id: number; text: string }[]; usage: BatchUsage }> {
   const inputPayload = batch.map((u) => ({ id: u.id, kind: u.kind, text: u.text }));
 
@@ -120,7 +122,7 @@ async function translateBatch(
       content: [
         {
           type: "text",
-          text: buildSystemPrompt(targetLang),
+          text: buildSystemPrompt(targetLang, tone),
           cache_control: { type: "ephemeral" },
         },
       ],
@@ -183,7 +185,17 @@ function parseTranslations(content: string): { id: number; text: string }[] {
   }
 }
 
-function buildSystemPrompt(targetLang: string): string {
+/**
+ * Build the system prompt for the translation LLM.
+ *
+ * Exported for testing — production callers go through `translateUnits`.
+ *
+ * The optional `tone` parameter appends a single sentence steering register.
+ * "neutral" (the default) appends nothing, leaving the source register intact.
+ */
+export function buildSystemPrompt(targetLang: string, tone?: Tone): string {
+  const toneSentence = TONE_SENTENCES[tone ?? "neutral"];
+  const toneLine = toneSentence ? `\n\n${toneSentence}` : "";
   return `You are a professional translator. Translate web page content into ${targetLang}.
 
 You will receive a JSON array of text snippets, each with:
@@ -216,5 +228,17 @@ Input:
  {"id":2,"kind":"p","text":"Lisez [1]plus[/1] ici."}]
 
 Output:
-{"translations":[{"id":1,"text":"Hello world"},{"id":2,"text":"Read [1]more[/1] here."}]}`;
+{"translations":[{"id":1,"text":"Hello world"},{"id":2,"text":"Read [1]more[/1] here."}]}${toneLine}`;
 }
+
+/**
+ * Single-sentence register nudge appended to the system prompt. "neutral" is
+ * empty so the model relies on the source register hint above.
+ */
+const TONE_SENTENCES: Record<Tone, string> = {
+  formal:
+    "Use a formal register: avoid contractions, prefer precise nouns, and use respectful, polished phrasing.",
+  neutral: "",
+  casual:
+    "Use a casual register: prefer contractions, conversational phrasing, and approachable everyday vocabulary.",
+};

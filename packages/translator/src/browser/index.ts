@@ -13,6 +13,7 @@ export type { LiveExtractResult } from "./extract-live.ts";
 export { applyTranslation, applyTranslationsBatch } from "./apply.ts";
 export {
   translateUnits,
+  buildSystemPrompt,
   DEFAULT_MODEL,
   type BatchUsage,
   type TranslateUnitsResult,
@@ -22,4 +23,5 @@ export type {
   TranslationUnit,
   TranslateOptions,
   TranslateResult,
+  Tone,
 } from "../types.ts";
