@@ -1,0 +1,294 @@
+---
+import Base from "../layouts/Base.astro";
+import { categoryLabels, countries } from "../data/countries.ts";
+
+/**
+ * /atlas — interactive world map.
+ *
+ * Vision §5: "interactive world map showing news velocity per country,
+ * click to drill in." This is the scaffold:
+ *
+ *  - Each country in `countries.ts` is rendered as a rectangle positioned
+ *    at its (approximate) capital lon/lat using an equirectangular
+ *    projection. Continent outlines are stylised slabs behind the markers
+ *    so the map reads as a map without shipping ~150KB of real geometry.
+ *  - Color intensity = site count. (Real "news velocity" — articles
+ *    per hour, breaking-news pulses, etc. — comes later when we have a
+ *    backend signal to drive it.)
+ *  - Click a country → opens a per-country modal listing its sites, plus
+ *    a link to that country's section on `/`.
+ */
+
+type GeoCoord = { lon: number; lat: number };
+
+// Approx capital lon/lat — used purely for marker placement.
+const capitals: Record<string, GeoCoord> = {
+  fr: { lon: 2.35, lat: 48.85 },     // Paris
+  de: { lon: 13.4, lat: 52.52 },     // Berlin
+  es: { lon: -3.7, lat: 40.42 },     // Madrid
+  it: { lon: 12.5, lat: 41.9 },      // Rome
+  nl: { lon: 4.9, lat: 52.37 },      // Amsterdam
+  se: { lon: 18.07, lat: 59.33 },    // Stockholm
+  fi: { lon: 24.94, lat: 60.17 },    // Helsinki
+  no: { lon: 10.75, lat: 59.91 },    // Oslo
+  pl: { lon: 21.01, lat: 52.23 },    // Warsaw
+  tr: { lon: 32.85, lat: 39.93 },    // Ankara
+  ru: { lon: 37.62, lat: 55.75 },    // Moscow
+  ua: { lon: 30.52, lat: 50.45 },    // Kyiv
+  jp: { lon: 139.69, lat: 35.69 },   // Tokyo
+  kr: { lon: 126.98, lat: 37.57 },   // Seoul
+  cn: { lon: 116.4, lat: 39.9 },     // Beijing
+  br: { lon: -47.93, lat: -15.78 },  // Brasília
+  mx: { lon: -99.13, lat: 19.43 },   // Mexico City
+  ar: { lon: -58.38, lat: -34.6 },   // Buenos Aires
+  sa: { lon: 46.72, lat: 24.71 },    // Riyadh
+  "in-hi": { lon: 77.21, lat: 28.61 }, // New Delhi
+};
+
+// Equirectangular projection into a 1000 × 500 viewBox.
+// lon ∈ [-180, 180] → x ∈ [0, 1000]
+// lat ∈ [85, -55]  → y ∈ [0, 500]   (clamped to populated band)
+const VIEW_W = 1000;
+const VIEW_H = 500;
+const LAT_TOP = 85;
+const LAT_BOTTOM = -55;
+function project({ lon, lat }: GeoCoord): { x: number; y: number } {
+  const x = ((lon + 180) / 360) * VIEW_W;
+  const y = ((LAT_TOP - lat) / (LAT_TOP - LAT_BOTTOM)) * VIEW_H;
+  return { x, y };
+}
+
+const maxSites = Math.max(...countries.map((c) => c.sites.length));
+
+// Intensity ramp from soft to deep accent. 5 buckets is enough for the
+// site-count range we currently have (3 → 6).
+function intensity(count: number) {
+  const t = count / maxSites; // 0..1
+  // Lerp from #c7d2fe (light) to #1e3a8a (deep).
+  const start = [199, 210, 254];
+  const end = [30, 58, 138];
+  const mix = start.map((s, i) => Math.round(s + (end[i] - s) * t));
+  return `rgb(${mix[0]}, ${mix[1]}, ${mix[2]})`;
+}
+
+const markers = countries.map((c) => {
+  const { x, y } = project(capitals[c.code]);
+  return {
+    code: c.code,
+    name: c.name,
+    x,
+    y,
+    fill: intensity(c.sites.length),
+    siteCount: c.sites.length,
+  };
+});
+
+const legendStops = [0, 0.33, 0.67, 1].map((t) =>
+  intensity(t * maxSites),
+);
+
+function anchorFor(code: string) {
+  return `/#country-${code}`;
+}
+---
+
+<Base
+  title="Atlas"
+  description="An interactive world map of BorderBrowser's directory. Click a country to see its sites."
+>
+  <section class="hero">
+    <h1>Atlas</h1>
+    <p class="lede">
+      Every country in the directory, on a map. Color intensity tracks how many
+      sites we currently track per country. Click a country for its sites.
+    </p>
+    <p class="atlas-note">
+      <strong>Coming later:</strong> live news-velocity signals — articles per
+      hour, breaking-news pulses — will drive the color in place of raw
+      site count. This page is the scaffold.
+    </p>
+  </section>
+
+  <div class="atlas-map-wrap">
+    <svg
+      class="atlas-map"
+      viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}
+      role="img"
+      aria-label="World map of countries in the BorderBrowser directory"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <!--
+        Continent silhouettes — deliberately abstract slabs so the markers
+        read as "on a map" without shipping real geometry. Replace with a
+        public-domain Natural Earth lowres outline once we want detail.
+      -->
+      <g class="atlas-land" aria-hidden="true">
+        <!-- North America -->
+        <path d="M 60 90 L 230 80 L 280 130 L 270 200 L 220 230 L 170 250 L 130 240 L 100 200 L 70 150 Z" />
+        <!-- Central / South America -->
+        <path d="M 220 240 L 280 240 L 310 290 L 320 360 L 290 430 L 260 470 L 240 460 L 230 400 L 220 340 Z" />
+        <!-- Europe -->
+        <path d="M 460 90 L 560 80 L 580 130 L 560 180 L 510 200 L 470 180 L 450 140 Z" />
+        <!-- Africa -->
+        <path d="M 480 200 L 580 200 L 610 260 L 600 340 L 560 410 L 520 430 L 490 400 L 470 340 L 470 260 Z" />
+        <!-- Middle East / Central Asia -->
+        <path d="M 580 180 L 680 170 L 720 210 L 700 260 L 640 280 L 590 250 Z" />
+        <!-- Asia (mainland) -->
+        <path d="M 680 100 L 880 100 L 900 200 L 880 260 L 800 280 L 720 270 L 690 220 L 680 160 Z" />
+        <!-- South-east Asia / Indonesia -->
+        <path d="M 820 280 L 920 280 L 950 330 L 920 360 L 850 350 Z" />
+        <!-- Japan / Korea archipelago -->
+        <path d="M 900 170 L 940 160 L 950 210 L 920 230 L 900 210 Z" />
+        <!-- Australia -->
+        <path d="M 880 380 L 970 380 L 980 430 L 940 450 L 890 440 Z" />
+      </g>
+
+      <!--
+        Country markers. Each is a rounded square sized so it's tappable
+        on mobile but doesn't crowd the map. Clicking opens the modal.
+      -->
+      <g class="atlas-markers">
+        {markers.map((m) => (
+          <g
+            class="atlas-marker"
+            data-code={m.code}
+            tabindex="0"
+            role="button"
+            aria-label={`${m.name} — ${m.siteCount} sites`}
+          >
+            <rect
+              x={m.x - 9}
+              y={m.y - 9}
+              width="18"
+              height="18"
+              rx="4"
+              ry="4"
+              fill={m.fill}
+              stroke="#0e0e10"
+              stroke-width="0.6"
+            />
+            <text
+              class="atlas-marker-label"
+              x={m.x}
+              y={m.y + 22}
+              text-anchor="middle"
+            >
+              {m.name}
+            </text>
+          </g>
+        ))}
+      </g>
+    </svg>
+
+    <div class="atlas-legend" aria-hidden="true">
+      <span class="legend-label">Sites tracked</span>
+      <span class="legend-bar">
+        {legendStops.map((color) => (
+          <span class="legend-stop" style={`background: ${color}`}></span>
+        ))}
+      </span>
+      <span class="legend-range"><span>few</span><span>many</span></span>
+    </div>
+  </div>
+
+  <!-- Modal — populated client-side from the marker clicked. -->
+  <div class="atlas-modal" id="atlas-modal" hidden>
+    <div class="atlas-modal-backdrop" data-close></div>
+    <div class="atlas-modal-card" role="dialog" aria-modal="true" aria-labelledby="atlas-modal-title">
+      <header class="atlas-modal-head">
+        <span class="flag" id="atlas-modal-flag" aria-hidden="true"></span>
+        <div>
+          <div class="country-name" id="atlas-modal-title"></div>
+          <div class="country-lang" id="atlas-modal-lang"></div>
+        </div>
+        <button class="atlas-modal-close" data-close aria-label="Close">×</button>
+      </header>
+      <ul class="site-list" id="atlas-modal-sites"></ul>
+      <a class="btn secondary atlas-modal-jump" id="atlas-modal-jump" href="/">
+        See in directory →
+      </a>
+    </div>
+  </div>
+
+  <script
+    type="application/json"
+    id="atlas-data"
+    is:inline
+    set:html={JSON.stringify(
+      countries.map((c) => ({
+        code: c.code,
+        name: c.name,
+        flag: c.flag,
+        language: c.language,
+        sites: c.sites.map((s) => ({
+          name: s.name,
+          url: s.url,
+          category: categoryLabels[s.category],
+        })),
+        anchor: anchorFor(c.code),
+      })),
+    )}
+  ></script>
+
+  <script is:inline>
+    (function () {
+      const data = JSON.parse(document.getElementById("atlas-data").textContent);
+      const byCode = Object.fromEntries(data.map((d) => [d.code, d]));
+
+      const modal = document.getElementById("atlas-modal");
+      const flagEl = document.getElementById("atlas-modal-flag");
+      const titleEl = document.getElementById("atlas-modal-title");
+      const langEl = document.getElementById("atlas-modal-lang");
+      const sitesEl = document.getElementById("atlas-modal-sites");
+      const jumpEl = document.getElementById("atlas-modal-jump");
+
+      function openModal(code) {
+        const c = byCode[code];
+        if (!c) return;
+        flagEl.textContent = c.flag;
+        titleEl.textContent = c.name;
+        langEl.textContent = c.language;
+        jumpEl.href = c.anchor;
+        sitesEl.innerHTML = "";
+        c.sites.forEach((s) => {
+          const li = document.createElement("li");
+          li.className = "site-row";
+          const a = document.createElement("a");
+          a.href = s.url;
+          a.target = "_blank";
+          a.rel = "noopener";
+          a.textContent = s.name;
+          const cat = document.createElement("span");
+          cat.className = "site-cat";
+          cat.textContent = s.category;
+          li.appendChild(a);
+          li.appendChild(cat);
+          sitesEl.appendChild(li);
+        });
+        modal.hidden = false;
+        document.body.style.overflow = "hidden";
+      }
+      function closeModal() {
+        modal.hidden = true;
+        document.body.style.overflow = "";
+      }
+
+      document.querySelectorAll(".atlas-marker").forEach((el) => {
+        el.addEventListener("click", () => openModal(el.dataset.code));
+        el.addEventListener("keydown", (e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            openModal(el.dataset.code);
+          }
+        });
+      });
+
+      modal.querySelectorAll("[data-close]").forEach((el) => {
+        el.addEventListener("click", closeModal);
+      });
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape" && !modal.hidden) closeModal();
+      });
+    })();
+  </script>
+</Base>
