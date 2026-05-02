@@ -1,6 +1,10 @@
 ---
 import Base from "../layouts/Base.astro";
-import { categoryLabels, countries } from "../data/countries.ts";
+import {
+  categoryLabels,
+  countries,
+  editorialLabels,
+} from "../data/countries.ts";
 
 const totalSites = countries.reduce((n, c) => n + c.sites.length, 0);
 ---
@@ -37,10 +41,25 @@ const totalSites = countries.reduce((n, c) => n + c.sites.length, 0);
         <ul class="site-list">
           {c.sites.map((s) => (
             <li class="site-row">
-              <a href={s.url} target="_blank" rel="noopener" title={s.description ?? s.name}>
-                {s.name}
-              </a>
-              <span class="site-cat">{categoryLabels[s.category]}</span>
+              <div class="site-main">
+                <div class="site-line">
+                  <a href={s.url} target="_blank" rel="noopener" title={s.description ?? s.name}>
+                    {s.name}
+                  </a>
+                  {s.editorial && s.editorial.kind !== "mainstream" && (
+                    <span
+                      class={`chip chip-${s.editorial.kind}`}
+                      title={s.editorial.note ?? editorialLabels[s.editorial.kind]}
+                    >
+                      {editorialLabels[s.editorial.kind]}
+                    </span>
+                  )}
+                  <span class="site-cat">{categoryLabels[s.category]}</span>
+                </div>
+                {s.description && (
+                  <div class="site-desc">{s.description}</div>
+                )}
+              </div>
             </li>
           ))}
         </ul>

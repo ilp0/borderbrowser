@@ -173,22 +173,57 @@ main {
   list-style: none; display: flex; flex-direction: column; gap: 4px;
 }
 .site-row {
-  display: flex; align-items: center; justify-content: space-between;
+  display: flex; align-items: flex-start;
   padding: 6px 8px; border-radius: 8px;
   margin: 0 -8px;
   transition: background 80ms;
 }
 .site-row:hover { background: var(--soft); }
-.site-row a {
-  font-size: 14px; color: var(--text); font-weight: 500;
-  flex: 1; min-width: 0;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+.site-main {
+  display: flex; flex-direction: column; gap: 2px;
+  min-width: 0; width: 100%;
 }
-.site-row a:hover { color: var(--accent); text-decoration: none; }
+.site-line {
+  display: flex; align-items: center; gap: 6px;
+  min-width: 0;
+}
+.site-line a {
+  font-size: 14px; color: var(--text); font-weight: 500;
+  min-width: 0;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  flex-shrink: 1;
+}
+.site-line a:hover { color: var(--accent); text-decoration: none; }
 .site-cat {
   font-size: 11px; color: var(--muted);
   text-transform: uppercase; letter-spacing: 0.04em;
   flex-shrink: 0;
+  margin-left: auto;
+}
+.site-desc {
+  font-size: 12px; color: var(--muted);
+  line-height: 1.4;
+}
+
+/* --------- Editorial chips --------- */
+.chip {
+  display: inline-flex; align-items: center;
+  font-size: 10px; font-weight: 600;
+  letter-spacing: 0.02em;
+  padding: 2px 7px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.chip-state {
+  background: #fdecec; color: #a51d1d; border-color: #f5c8c8;
+}
+.chip-independent-in-exile {
+  background: #ecf3fd; color: #1a4ea8; border-color: #c8d8f5;
+}
+.chip-tabloid {
+  background: #fff5e0; color: #8a5a00; border-color: #f3dcab;
 }
 
 /* --------- Cards (used on install/buy/topup pages) --------- */
@@ -287,6 +322,54 @@ input:focus {
   max-width: 60ch;
 }
 .atlas-map-wrap {
+/* --------- Same-story page --------- */
+.story-hero {
+  padding: 24px 0 8px;
+  display: flex; flex-direction: column; gap: 10px;
+}
+.story-tag {
+  align-self: flex-start;
+  font-size: 11px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-radius: 999px;
+  padding: 4px 10px;
+}
+.story-hero h1 {
+  font-size: clamp(26px, 4vw, 36px);
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  font-weight: 800;
+  max-width: 22ch;
+}
+.story-hero p.lede {
+  font-size: clamp(14px, 1.5vw, 16px);
+  color: var(--muted);
+  max-width: 64ch;
+}
+.story-meta {
+  display: flex; flex-wrap: wrap; gap: 6px;
+  font-size: 13px; color: var(--muted);
+  margin-top: 4px;
+}
+.story-meta .story-event { color: var(--text); font-weight: 600; }
+.story-meta .dot { color: #c0c0c8; }
+.story-synopsis {
+  font-size: 14px; color: var(--muted);
+  max-width: 72ch;
+  border-left: 3px solid var(--soft);
+  padding: 4px 0 4px 12px;
+  margin-top: 4px;
+}
+
+.story-grid {
+  margin-top: 20px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 14px;
+}
+.story-card {
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--radius);
@@ -378,3 +461,44 @@ input:focus {
 }
 .atlas-modal-close:hover { color: var(--text); }
 .atlas-modal-jump { margin-top: 12px; }
+  display: flex; flex-direction: column; gap: 10px;
+  transition: border-color 120ms, box-shadow 120ms;
+}
+.story-card:hover {
+  border-color: #cdd2dc;
+  box-shadow: var(--shadow-md);
+}
+.story-card-head {
+  display: flex; align-items: center; gap: 10px;
+}
+.story-card-meta {
+  display: flex; flex-direction: column; gap: 1px; min-width: 0;
+}
+.story-card-source {
+  font-weight: 700; font-size: 14px; letter-spacing: -0.005em;
+}
+.story-card-country {
+  font-size: 12px; color: var(--muted);
+}
+.story-card-headline {
+  font-size: 15px; line-height: 1.35; letter-spacing: -0.005em;
+  font-weight: 700;
+}
+.story-card-translation {
+  font-size: 13px; color: var(--muted); font-style: italic;
+}
+.story-card-excerpt {
+  font-size: 13px; color: var(--text); line-height: 1.5;
+}
+.story-card-link {
+  margin-top: auto;
+  font-size: 13px; font-weight: 600;
+  align-self: flex-start;
+}
+.story-disclaimer {
+  margin-top: 28px;
+  font-size: 12px; color: var(--muted);
+  border-top: 1px solid var(--line);
+  padding-top: 14px;
+  max-width: 72ch;
+}
