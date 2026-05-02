@@ -23,12 +23,23 @@ import {
 import { getConfig, getRuntimeConfig, setConfig } from "./lib/config.ts";
 import { attachPeek, detachAll as detachPeek } from "./lib/hover-peek.ts";
 import {
+  BB_FRAME_MSG_VERSION,
+  type FrameTranslateResponse,
+  isFrameTranslateRequest,
+} from "./lib/frame-protocol.ts";
+import {
   type TabRequest,
   type TabResponse,
   type TabStatus,
   sendToBg,
 } from "./lib/messages.ts";
 import * as readingMode from "./lib/reading-mode.ts";
+
+// Each frame the content script lives in runs an independent instance:
+// own DOM, own translate cycle, own atomic swap. The top-frame guard is
+// only used to keep automation hooks (the `#bb-translate` URL trigger)
+// from double-firing when the iframe also matches the URL pattern.
+const isTopFrame = window.top === window;
 
 type CacheEntry = { original: string; translated: string };
 const cache: WeakMap<Element, CacheEntry> = new WeakMap();
@@ -524,6 +535,7 @@ const LANG_NAME_TO_CODE: Record<string, string> = {
 console.log("[BorderBrowser] content script loaded", {
   url: location.href,
   hash: location.hash,
+  topFrame: isTopFrame,
   readyState: document.readyState,
 });
 
@@ -531,10 +543,8 @@ console.log("[BorderBrowser] content script loaded", {
  * Resolves once the DOM is parsed enough that `document.body` exists.
  *
  * The content script registers at `document_start` so we can prep state
- * before paint (and, in future units, intercept the `<head>` to pre-cache
- * title/og:/JSON-LD before the page even draws). At that point the body
- * is null and `extractFromDom` would explode. Every code path that touches
- * the DOM funnels through this gate.
+ * before paint. At that point the body is null and `extractFromDom` would
+ * explode. Every code path that touches the DOM funnels through this gate.
  */
 function whenDomReady(): Promise<void> {
   if (document.readyState === "interactive" || document.readyState === "complete") {
@@ -546,12 +556,7 @@ function whenDomReady(): Promise<void> {
 }
 
 /**
- * Snapshot of the `<head>` captured as soon as it's parsed. Reserved for
- * the upcoming head-pre-translate work — the next unit will hand this
- * off to the background SW so the translated title/meta are ready before
- * the body swap. We capture it here (not lazily on demand) because by
- * the time the user clicks Translate, the page's own JS may already have
- * mutated the head.
+ * Snapshot of the `<head>` captured as soon as it's parsed.
  */
 type HeadSnapshot = {
   title: string;
@@ -582,11 +587,22 @@ function captureHead(): void {
   debug("head-captured", { title: headSnapshot.title, metas: metas.length, jsonLd: jsonLd.length });
 }
 
+// Surface frame context to the page so e2e harnesses can verify the script
+// is running in BOTH the parent and the iframe.
+document.dispatchEvent(
+  new CustomEvent("borderbrowser:frame-loaded", {
+    detail: {
+      topFrame: isTopFrame,
+      url: location.href,
+    },
+  }),
+);
+
 void whenDomReady().then(() => {
   captureHead();
-  if (location.hash.includes("bb-translate")) {
-    // Small delay preserved from the previous document_idle behavior so the
-    // page's own bootstrap JS gets a beat to settle before we extract.
+  // Top-frame guard: an iframe sharing the parent's hash would otherwise
+  // double-fire its own translation cycle at load time.
+  if (isTopFrame && location.hash.includes("bb-translate")) {
     setTimeout(() => void translatePage(false), 800);
   }
 });
@@ -603,3 +619,35 @@ void (async () => {
     // chrome.storage may be unavailable in odd contexts; non-fatal.
   }
 })();
+
+// Cross-origin parent → child translate stub. Page content never crosses
+// the frame boundary — only a control signal in, an ack out. We accept
+// messages from `window.parent` only.
+if (!isTopFrame) {
+  window.addEventListener("message", (event: MessageEvent) => {
+    if (event.source !== window.parent) return;
+    if (!isFrameTranslateRequest(event.data)) return;
+    const req = event.data;
+    void (async () => {
+      let ok = true;
+      let reason: string | undefined;
+      try {
+        if (req.lang) await setConfig({ targetLang: req.lang });
+        await translatePage(req.usePremium ?? false);
+      } catch (err) {
+        ok = false;
+        reason = err instanceof Error ? err.message : String(err);
+      }
+      const response: FrameTranslateResponse = {
+        type: "bb-translate-response",
+        v: BB_FRAME_MSG_VERSION,
+        requestId: req.requestId,
+        ok,
+        ...(reason ? { reason } : {}),
+      };
+      event.source?.postMessage(response, {
+        targetOrigin: event.origin,
+      });
+    })();
+  });
+}
