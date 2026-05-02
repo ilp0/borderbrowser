@@ -12,6 +12,12 @@ export { extractFromDom, encodeFromLiveDom } from "./extract-live.ts";
 export type { LiveExtractResult } from "./extract-live.ts";
 export { applyTranslation, applyTranslationsBatch } from "./apply.ts";
 export {
+  extractJsonLd,
+  applyJsonLdTranslations,
+  snapshotJsonLdOriginals,
+} from "./extract-jsonld.ts";
+export type { JsonLdExtractResult } from "./extract-jsonld.ts";
+export {
   translateUnits,
   DEFAULT_MODEL,
   type BatchUsage,

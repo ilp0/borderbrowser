@@ -11,8 +11,11 @@
  * fetch itself, so the API key never leaves chrome.storage.local + the SW.
  */
 import {
+  applyJsonLdTranslations,
   decodeText,
   extractFromDom,
+  extractJsonLd,
+  snapshotJsonLdOriginals,
 } from "@borderbrowser/translator/browser/dom";
 import { getRuntimeConfig, setConfig } from "./lib/config.ts";
 import {
@@ -25,6 +28,12 @@ import {
 type CacheEntry = { original: string; translated: string };
 const cache: WeakMap<Element, CacheEntry> = new WeakMap();
 const translatedElements = new Set<Element>();
+/**
+ * Per-script original/translated text for `<script type="application/ld+json">`
+ * blocks we rewrote. Tracked separately from the inline element cache because
+ * the apply path is different (textContent assignment, no decodeText).
+ */
+const jsonLdCache = new Map<HTMLScriptElement, { original: string; translated: string }>();
 let pageState: "original" | "translated" = "original";
 let busy = false;
 let lastStats: TabStatus["lastStats"];
@@ -60,7 +69,7 @@ async function handleMessage(req: TabRequest): Promise<TabResponse> {
         kind: "tab.status",
         ok: true,
         status: {
-          translated: translatedElements.size > 0,
+          translated: translatedElements.size > 0 || jsonLdCache.size > 0,
           showing: pageState,
           ...(lastStats ? { lastStats } : {}),
           busy,
@@ -111,32 +120,59 @@ async function translatePage(usePremium: boolean): Promise<void> {
 
     const root = document.documentElement;
     const { units, refs } = extractFromDom(root);
-    debug("extracted", { units: units.length, totalChars: units.reduce((n, u) => n + u.text.length, 0) });
 
-    if (units.length === 0) {
+    // Extract JSON-LD structured-data fields too. Recipe / FAQ / Article
+    // schemas often carry user-facing prose (recipe steps, FAQ answers) that
+    // search engines surface in their result cards; if we leave them in the
+    // source language the page reads bilingual.
+    //
+    // ID-space: continue numbering from where DOM units left off so the LLM
+    // gets a single flat list with no collisions. Results are demuxed back
+    // out by id at apply time.
+    const maxDomId = units.reduce((m, u) => Math.max(m, u.id), 0);
+    const jsonLd = extractJsonLd(document, maxDomId + 1);
+
+    debug("extracted", {
+      domUnits: units.length,
+      jsonLdUnits: jsonLd.units.length,
+      jsonLdScripts: jsonLd.scripts.size,
+      totalChars:
+        units.reduce((n, u) => n + u.text.length, 0) +
+        jsonLd.units.reduce((n, u) => n + u.text.length, 0),
+    });
+
+    if (units.length === 0 && jsonLd.units.length === 0) {
       showOverlayMessage("Nothing translatable on this page.", "info");
       await sleep(1400);
       hideOverlay();
       return;
     }
 
-    // Snapshot originals so we can toggle later.
+    // Snapshot originals so we can toggle later. DOM elements use a WeakMap
+    // keyed on the element; JSON-LD scripts get their textContent captured up
+    // front because we'll overwrite it in the atomic pass below.
     for (const u of units) {
       const el = refs.get(u.id);
       if (!el) continue;
       if (!cache.has(el)) cache.set(el, { original: el.innerHTML, translated: "" });
     }
+    for (const { script, original } of snapshotJsonLdOriginals(jsonLd)) {
+      if (!jsonLdCache.has(script)) {
+        jsonLdCache.set(script, { original, translated: "" });
+      }
+    }
 
     const model = usePremium ? cfg.premiumModel : cfg.model;
     const startMs = performance.now();
 
+    const allUnits = [...units, ...jsonLd.units];
     const response = await sendToBg({
       kind: "bg.translate",
       targetLang: cfg.targetLang,
       model,
       baseUrl: cfg.baseUrl,
       apiKey: cfg.apiKey,
-      units: units.map((u) => ({ id: u.id, kind: u.kind, text: u.text })),
+      units: allUnits.map((u) => ({ id: u.id, kind: u.kind, text: u.text })),
     });
 
     const elapsedMs = Math.round(performance.now() - startMs);
@@ -155,6 +191,9 @@ async function translatePage(usePremium: boolean): Promise<void> {
     const translations = new Map(response.translations.map((t) => [t.id, t.text]));
 
     // Pre-compute everything BEFORE we touch the DOM, so the swap is atomic.
+    // The JSON-LD path uses a separate applier (no decodeText — JSON values
+    // are plain text, not HTML; running them through decodeText would
+    // entity-escape `<`, `>`, `&` and corrupt strings like "Tom & Jerry").
     const updates: { el: Element; html: string }[] = [];
     for (const u of units) {
       const t = translations.get(u.id);
@@ -165,21 +204,42 @@ async function translatePage(usePremium: boolean): Promise<void> {
       updates.push({ el, html });
     }
 
+    // Demux JSON-LD translations back out of the flat response.
+    const jsonLdTranslations = new Map<number, string>();
+    for (const u of jsonLd.units) {
+      const t = translations.get(u.id);
+      if (t !== undefined) jsonLdTranslations.set(u.id, t);
+    }
+
     await nextFrame();
+    // Atomic swap: DOM writes + JSON-LD writes happen in the same pass so the
+    // user never sees a half-translated page (the project's UX contract).
     for (const { el, html } of updates) {
       const entry = cache.get(el);
       if (entry) entry.translated = html;
       el.innerHTML = html;
       translatedElements.add(el);
     }
+    applyJsonLdTranslations(jsonLd, jsonLdTranslations);
+    // Capture each rewritten script's new textContent so the toggle can flip
+    // back to translated state after a "show original".
+    for (const script of jsonLd.scripts.keys()) {
+      const entry = jsonLdCache.get(script);
+      if (entry) entry.translated = script.textContent ?? "";
+    }
     pageState = "translated";
     lastStats = {
-      units: units.length,
+      units: allUnits.length,
       elapsedMs,
       inputTokens: response.stats.inputTokens,
       outputTokens: response.stats.outputTokens,
     };
-    debug("done", { units: units.length, elapsedMs, applied: updates.length });
+    debug("done", {
+      domUnits: units.length,
+      jsonLdUnits: jsonLd.units.length,
+      elapsedMs,
+      applied: updates.length + jsonLdTranslations.size,
+    });
 
     hideOverlay();
   } catch (err) {
@@ -214,6 +274,13 @@ function showState(s: "original" | "translated"): void {
     if (!entry) continue;
     if (s === "original") el.innerHTML = entry.original;
     else el.innerHTML = entry.translated;
+  }
+  // Mirror the toggle on JSON-LD scripts. Scripts that were captured but had
+  // no translatable fields (e.g. an Organization-only block) still appear in
+  // the cache but their `translated` is empty — skip those.
+  for (const [script, entry] of jsonLdCache) {
+    if (s === "original") script.textContent = entry.original;
+    else if (entry.translated) script.textContent = entry.translated;
   }
   pageState = s;
 }
