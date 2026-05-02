@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="fi">
+  <head>
+    <meta charset="utf-8" />
+    <title>BorderBrowser iframe child fixture</title>
+    <style>
+      body {
+        font-family: -apple-system, "Segoe UI", sans-serif;
+        margin: 16px;
+        line-height: 1.5;
+        background: #fafafa;
+      }
+    </style>
+  </head>
+  <body>
+    <h2>Lapsikehys</h2>
+    <p id="child-text">
+      Tämä teksti on sisäisessä iframessa. Sen pitäisi kääntyä
+      itsenäisesti, kun BorderBrowser-käännös ajetaan.
+    </p>
+
+    <pre id="frame-events" style="font-size: 12px; background: #fff; padding: 8px;"></pre>
+    <script>
+      // Mirror the parent's diagnostic — proves the content script is also
+      // running here. If the script is NOT injected into iframes, this stays
+      // empty and the e2e harness fails its assertion.
+      const out = document.getElementById("frame-events");
+      document.addEventListener("borderbrowser:frame-loaded", (e) => {
+        out.textContent +=
+          "child: " + JSON.stringify(e.detail) + "\n";
+      });
+    </script>
+  </body>
+</html>

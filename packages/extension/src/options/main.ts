@@ -2,6 +2,7 @@
  * Options page logic: load current config + secrets, save updates,
  * provide provider quick-switch chips for the base URL.
  */
+import "../lib/browser.ts"; // Cross-browser polyfill (Chrome + Firefox MV3).
 import {
   DEFAULT_CONFIG,
   getConfig,

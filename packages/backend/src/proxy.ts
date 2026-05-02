@@ -17,6 +17,7 @@ import {
   deductCredits,
   findKeyByHash,
   logUsage,
+  type Db,
 } from "./db.ts";
 import { hashKey, isWellFormed } from "./keys.ts";
 import {
@@ -27,150 +28,165 @@ import {
 } from "./pricing.ts";
 import type { Env } from "./types.ts";
 
-export const proxy = new Hono<{ Bindings: Env }>();
+export type ProxyDeps = {
+  /** Factory for the Postgres client. Override in tests to inject a stub. */
+  dbFactory: (databaseUrl: string) => Db;
+};
 
-proxy.post("/v1/chat/completions", async (c) => {
-  const auth = c.req.header("authorization");
-  const bearer = auth?.match(/^Bearer\s+(\S+)$/i)?.[1];
-  if (!bearer) return jsonError(c, 401, "missing_authorization", "Set Authorization: Bearer …");
-  if (!isWellFormed(bearer)) {
-    return jsonError(c, 401, "invalid_key_format", "Not a BorderBrowser key.");
-  }
+/**
+ * Build the proxy Hono app. Production callers can use the default-export
+ * `proxy`; tests inject a stub `dbFactory` to avoid touching Postgres.
+ */
+export function createProxy(deps: ProxyDeps = { dbFactory: db }): Hono<{ Bindings: Env }> {
+  const app = new Hono<{ Bindings: Env }>();
 
-  const sql = db(c.env.DATABASE_URL);
-  const keyHash = await hashKey(bearer);
-  const key = await findKeyByHash(sql, keyHash);
-  if (!key) return jsonError(c, 401, "key_not_found", "Unknown API key.");
-  if (key.revoked) return jsonError(c, 403, "key_revoked", "This key has been revoked.");
-  if (key.credits_remaining <= 0) {
-    return jsonError(
-      c,
-      402,
-      "insufficient_credits",
-      "Out of credits. Top up at " + c.env.HOMEPAGE_URL + "/topup",
-    );
-  }
+  app.post("/v1/chat/completions", async (c) => {
+    const auth = c.req.header("authorization");
+    const bearer = auth?.match(/^Bearer\s+(\S+)$/i)?.[1];
+    if (!bearer) return jsonError(c, 401, "missing_authorization", "Set Authorization: Bearer …");
+    if (!isWellFormed(bearer)) {
+      return jsonError(c, 401, "invalid_key_format", "Not a BorderBrowser key.");
+    }
 
-  const body = await c.req.json<{ model?: string; stream?: boolean; messages?: ChatMessage[] }>();
-  const model = body.model ?? "";
-  if (!(model in PRICES)) {
-    return jsonError(c, 400, "model_not_supported", `Model "${model}" is not enabled on BorderBrowser.`);
-  }
-
-  // Edge cache (Vision §8). Opt-in per request via header. Streaming is not
-  // cached: the upside is small (the body is consumed once) and the wiring
-  // would either buffer the stream or replay it as SSE — both ugly.
-  const cacheOptIn = c.req.header("x-bb-cache") === "1" && !body.stream;
-  const targetLang = c.req.header("x-bb-target-lang") ?? "";
-  let bbCacheKey: string | null = null;
-  if (cacheOptIn) {
-    bbCacheKey = await cacheKey(model, targetLang, body.messages ?? []);
-    const cached = await cacheGet(c.env, bbCacheKey);
-    if (cached) {
-      // Hit. Charge nothing; record the event so we can measure hit rate.
-      c.executionCtx.waitUntil(
-        logUsage(sql, {
-          apiKeyId: key.id,
-          model,
-          usage: { inputTokens: 0, outputTokens: 0, cachedInputTokens: 0 },
-          upstreamCostMicros: 0,
-          creditsCharged: 0,
-          cacheHit: true,
-        }),
+    const sql = deps.dbFactory(c.env.DATABASE_URL);
+    const keyHash = await hashKey(bearer);
+    const key = await findKeyByHash(sql, keyHash);
+    if (!key) return jsonError(c, 401, "key_not_found", "Unknown API key.");
+    if (key.revoked) return jsonError(c, 403, "key_revoked", "This key has been revoked.");
+    if (key.credits_remaining <= 0) {
+      return jsonError(
+        c,
+        402,
+        "insufficient_credits",
+        "Out of credits. Top up at " + c.env.HOMEPAGE_URL + "/topup",
       );
-      return new Response(cached, {
-        status: 200,
-        headers: {
-          "Content-Type": "application/json",
-          "X-BB-Cache": "HIT",
-        },
+    }
+
+    const body = await c.req.json<{ model?: string; stream?: boolean; messages?: ChatMessage[] }>();
+    const model = body.model ?? "";
+    if (!(model in PRICES)) {
+      return jsonError(c, 400, "model_not_supported", `Model "${model}" is not enabled on BorderBrowser.`);
+    }
+
+    // Edge cache (Vision §8). Opt-in per request via header. Streaming is not
+    // cached: the upside is small (the body is consumed once) and the wiring
+    // would either buffer the stream or replay it as SSE — both ugly.
+    const cacheOptIn = c.req.header("x-bb-cache") === "1" && !body.stream;
+    const targetLang = c.req.header("x-bb-target-lang") ?? "";
+    let bbCacheKey: string | null = null;
+    if (cacheOptIn) {
+      bbCacheKey = await cacheKey(model, targetLang, body.messages ?? []);
+      const cached = await cacheGet(c.env, bbCacheKey);
+      if (cached) {
+        c.executionCtx.waitUntil(
+          logUsage(sql, {
+            apiKeyId: key.id,
+            model,
+            usage: { inputTokens: 0, outputTokens: 0, cachedInputTokens: 0 },
+            upstreamCostMicros: 0,
+            creditsCharged: 0,
+            cacheHit: true,
+          }),
+        );
+        return new Response(cached, {
+          status: 200,
+          headers: {
+            "Content-Type": "application/json",
+            "X-BB-Cache": "HIT",
+          },
+        });
+      }
+    }
+
+    // Forward to OpenRouter. We keep their streaming behavior intact.
+    const upstream = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${c.env.OPENROUTER_KEY}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": c.env.PUBLIC_BASE_URL,
+        "X-Title": "BorderBrowser",
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (!upstream.ok) {
+      const text = await upstream.text();
+      return new Response(text, {
+        status: upstream.status,
+        headers: { "Content-Type": upstream.headers.get("content-type") ?? "application/json" },
       });
     }
-  }
 
-  // Forward to OpenRouter. We keep their streaming behavior intact.
-  const upstream = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${c.env.OPENROUTER_KEY}`,
-      "Content-Type": "application/json",
-      "HTTP-Referer": c.env.PUBLIC_BASE_URL,
-      "X-Title": "BorderBrowser",
-    },
-    body: JSON.stringify(body),
-  });
-
-  if (!upstream.ok) {
-    const text = await upstream.text();
-    return new Response(text, {
-      status: upstream.status,
-      headers: { "Content-Type": upstream.headers.get("content-type") ?? "application/json" },
-    });
-  }
-
-  if (body.stream) {
-    // Wrap the stream so we can extract the final usage chunk and deduct
-    // credits after the client finishes reading.
-    const [forClient, forUs] = upstream.body!.tee();
-    c.executionCtx.waitUntil(
-      meterStream(forUs, model, c.env, key.id, parseInt(c.env.MARGIN_BPS, 10)),
-    );
-    return new Response(forClient, {
-      status: 200,
-      headers: { "Content-Type": "text/event-stream" },
-    });
-  }
-
-  // Non-streaming: inspect JSON body, deduct, then forward.
-  const json = (await upstream.json()) as {
-    usage?: { prompt_tokens?: number; completion_tokens?: number; prompt_tokens_details?: { cached_tokens?: number } };
-  };
-  const usage = readUsage(json);
-  const upstreamMicros = upstreamCostMicros(model, usage);
-  const charge = withMargin(upstreamMicros, parseInt(c.env.MARGIN_BPS, 10));
-  const responseBody = JSON.stringify(json);
-
-  c.executionCtx.waitUntil(
-    (async () => {
-      await deductCredits(sql, { apiKeyId: key.id, creditsToDeduct: charge });
-      await logUsage(sql, {
-        apiKeyId: key.id,
-        model,
-        usage,
-        upstreamCostMicros: upstreamMicros,
-        creditsCharged: charge,
+    if (body.stream) {
+      // Wrap the stream so we can extract the final usage chunk and deduct
+      // credits after the client finishes reading.
+      const [forClient, forUs] = upstream.body!.tee();
+      c.executionCtx.waitUntil(
+        meterStream(forUs, model, c.env, key.id, parseInt(c.env.MARGIN_BPS, 10), deps),
+      );
+      return new Response(forClient, {
+        status: 200,
+        headers: { "Content-Type": "text/event-stream" },
       });
-      if (bbCacheKey) {
-        await cachePut(c.env, bbCacheKey, responseBody);
-      }
-    })(),
-  );
+    }
 
-  return new Response(responseBody, {
-    status: 200,
-    headers: {
-      "Content-Type": "application/json",
-      ...(bbCacheKey ? { "X-BB-Cache": "MISS" } : {}),
-    },
-  });
-});
+    // Non-streaming: inspect JSON body, deduct, then forward.
+    const json = (await upstream.json()) as {
+      usage?: { prompt_tokens?: number; completion_tokens?: number; prompt_tokens_details?: { cached_tokens?: number } };
+    };
+    const usage = readUsage(json);
+    const upstreamMicros = upstreamCostMicros(model, usage);
+    const charge = withMargin(upstreamMicros, parseInt(c.env.MARGIN_BPS, 10));
+    const responseBody = JSON.stringify(json);
 
-proxy.get("/v1/credits", async (c) => {
-  const auth = c.req.header("authorization");
-  const bearer = auth?.match(/^Bearer\s+(\S+)$/i)?.[1];
-  if (!bearer || !isWellFormed(bearer)) {
-    return jsonError(c, 401, "missing_authorization", "Set Authorization: Bearer …");
-  }
-  const sql = db(c.env.DATABASE_URL);
-  const key = await findKeyByHash(sql, await hashKey(bearer));
-  if (!key) return jsonError(c, 401, "key_not_found", "Unknown API key.");
-  return c.json({
-    credits_remaining_micros: key.credits_remaining,
-    credits_remaining_usd: key.credits_remaining / 1_000_000,
-    total_purchased_micros: key.total_credits_purchased,
-    revoked: key.revoked,
+    c.executionCtx.waitUntil(
+      (async () => {
+        await deductCredits(sql, { apiKeyId: key.id, creditsToDeduct: charge });
+        await logUsage(sql, {
+          apiKeyId: key.id,
+          model,
+          usage,
+          upstreamCostMicros: upstreamMicros,
+          creditsCharged: charge,
+        });
+        if (bbCacheKey) {
+          await cachePut(c.env, bbCacheKey, responseBody);
+        }
+      })(),
+    );
+
+    return new Response(responseBody, {
+      status: 200,
+      headers: {
+        "Content-Type": "application/json",
+        ...(bbCacheKey ? { "X-BB-Cache": "MISS" } : {}),
+      },
+    });
   });
-});
+
+  app.get("/v1/credits", async (c) => {
+    const auth = c.req.header("authorization");
+    const bearer = auth?.match(/^Bearer\s+(\S+)$/i)?.[1];
+    if (!bearer || !isWellFormed(bearer)) {
+      return jsonError(c, 401, "missing_authorization", "Set Authorization: Bearer …");
+    }
+    const sql = deps.dbFactory(c.env.DATABASE_URL);
+    const key = await findKeyByHash(sql, await hashKey(bearer));
+    if (!key) return jsonError(c, 401, "key_not_found", "Unknown API key.");
+    return c.json({
+      credits_remaining_micros: key.credits_remaining,
+      credits_remaining_usd: key.credits_remaining / 1_000_000,
+      total_purchased_micros: key.total_credits_purchased,
+      revoked: key.revoked,
+    });
+  });
+
+  return app;
+}
+
+/** Production proxy app. Tests should call `createProxy({...})` instead. */
+export const proxy = createProxy();
 
 function readUsage(json: {
   usage?: {
@@ -193,6 +209,7 @@ async function meterStream(
   env: Env,
   apiKeyId: number,
   marginBps: number,
+  deps: ProxyDeps,
 ): Promise<void> {
   // OpenRouter streams SSE; the final chunk before [DONE] carries usage when
   // `stream_options: { include_usage: true }` is set. We scan for it.
@@ -232,7 +249,7 @@ async function meterStream(
   }
 
   if (!usage) return; // no usage emitted — don't charge
-  const sql = db(env.DATABASE_URL);
+  const sql = deps.dbFactory(env.DATABASE_URL);
   const upstreamMicros = upstreamCostMicros(model, usage);
   const charge = withMargin(upstreamMicros, marginBps);
   await deductCredits(sql, { apiKeyId, creditsToDeduct: charge });

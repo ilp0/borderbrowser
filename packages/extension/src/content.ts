@@ -10,21 +10,49 @@
  * Calls the background SW for the actual LLM round-trip — never makes the
  * fetch itself, so the API key never leaves chrome.storage.local + the SW.
  */
+import "./lib/browser.ts"; // Cross-browser polyfill (Chrome + Firefox MV3).
 import {
+  applyJsonLdTranslations,
   decodeText,
   extractFromDom,
+  extractJsonLd,
+  snapshotJsonLdOriginals,
 } from "@borderbrowser/translator/browser/dom";
-import { getRuntimeConfig, setConfig } from "./lib/config.ts";
+import {
+  computeContentHash,
+  getCached,
+  putCached,
+} from "./lib/cache.ts";
+import { getConfig, getRuntimeConfig, setConfig } from "./lib/config.ts";
+import { attachPeek, detachAll as detachPeek } from "./lib/hover-peek.ts";
+import {
+  BB_FRAME_MSG_VERSION,
+  type FrameTranslateResponse,
+  isFrameTranslateRequest,
+} from "./lib/frame-protocol.ts";
 import {
   type TabRequest,
   type TabResponse,
   type TabStatus,
   sendToBg,
 } from "./lib/messages.ts";
+import * as readingMode from "./lib/reading-mode.ts";
+
+// Each frame the content script lives in runs an independent instance:
+// own DOM, own translate cycle, own atomic swap. The top-frame guard is
+// only used to keep automation hooks (the `#bb-translate` URL trigger)
+// from double-firing when the iframe also matches the URL pattern.
+const isTopFrame = window.top === window;
 
 type CacheEntry = { original: string; translated: string };
 const cache: WeakMap<Element, CacheEntry> = new WeakMap();
 const translatedElements = new Set<Element>();
+/**
+ * Per-script original/translated text for `<script type="application/ld+json">`
+ * blocks we rewrote. Tracked separately from the inline element cache because
+ * the apply path is different (textContent assignment, no decodeText).
+ */
+const jsonLdCache = new Map<HTMLScriptElement, { original: string; translated: string }>();
 let pageState: "original" | "translated" = "original";
 let busy = false;
 let lastStats: TabStatus["lastStats"];
@@ -55,22 +83,59 @@ async function handleMessage(req: TabRequest): Promise<TabResponse> {
     case "tab.showTranslated":
       showState("translated");
       return { kind: "tab.ack", ok: true };
+    case "tab.toggleReadingMode":
+      await handleToggleReadingMode(req.enabled);
+      return { kind: "tab.ack", ok: true };
+    case "tab.toggleOriginal":
+      // No-op when nothing has been translated yet — leave the page alone so
+      // the keyboard shortcut doesn't surprise users on un-translated pages.
+      if (translatedElements.size > 0) {
+        showState(pageState === "translated" ? "original" : "translated");
+      }
+      return { kind: "tab.ack", ok: true };
     case "tab.getStatus":
       return {
         kind: "tab.status",
         ok: true,
         status: {
-          translated: translatedElements.size > 0,
+          translated: translatedElements.size > 0 || jsonLdCache.size > 0,
           showing: pageState,
           ...(lastStats ? { lastStats } : {}),
           busy,
+          readingMode: readingMode.isEnabled(),
         },
       };
   }
 }
 
+async function handleToggleReadingMode(explicit?: boolean): Promise<void> {
+  const shouldEnable =
+    explicit === undefined ? !readingMode.isEnabled() : explicit;
+
+  // If enable() couldn't find an article we don't persist — would auto-fail
+  // again next load.
+  const ok = shouldEnable ? readingMode.enable() : (readingMode.disable(), true);
+  if (!ok) return;
+
+  const host = location.hostname;
+  if (!host) return;
+  try {
+    const cfg = await getConfig();
+    const set = new Set(cfg.readingModeDomains);
+    if (shouldEnable) set.add(host);
+    else set.delete(host);
+    await setConfig({ readingModeDomains: Array.from(set) });
+  } catch (err) {
+    console.warn("[BorderBrowser] failed to persist reading mode pref", err);
+  }
+}
+
 async function translatePage(usePremium: boolean): Promise<void> {
   if (busy) return;
+  // Defensive: at document_start a popup-driven translate could race the
+  // page parse and hit a half-built DOM. Every entry point funnels here,
+  // so this single gate guards the whole flow.
+  await whenDomReady();
   busy = true;
   showOverlay("Translating page…");
   debug("start", { usePremium });
@@ -111,50 +176,116 @@ async function translatePage(usePremium: boolean): Promise<void> {
 
     const root = document.documentElement;
     const { units, refs } = extractFromDom(root);
-    debug("extracted", { units: units.length, totalChars: units.reduce((n, u) => n + u.text.length, 0) });
 
-    if (units.length === 0) {
+    // Extract JSON-LD structured-data fields too. Recipe / FAQ / Article
+    // schemas often carry user-facing prose (recipe steps, FAQ answers) that
+    // search engines surface in their result cards; if we leave them in the
+    // source language the page reads bilingual.
+    //
+    // ID-space: continue numbering from where DOM units left off so the LLM
+    // gets a single flat list with no collisions. Results are demuxed back
+    // out by id at apply time.
+    const maxDomId = units.reduce((m, u) => Math.max(m, u.id), 0);
+    const jsonLd = extractJsonLd(document, maxDomId + 1);
+
+    debug("extracted", {
+      domUnits: units.length,
+      jsonLdUnits: jsonLd.units.length,
+      jsonLdScripts: jsonLd.scripts.size,
+      totalChars:
+        units.reduce((n, u) => n + u.text.length, 0) +
+        jsonLd.units.reduce((n, u) => n + u.text.length, 0),
+    });
+
+    if (units.length === 0 && jsonLd.units.length === 0) {
       showOverlayMessage("Nothing translatable on this page.", "info");
       await sleep(1400);
       hideOverlay();
       return;
     }
 
-    // Snapshot originals so we can toggle later.
+    // Snapshot originals so we can toggle later. DOM elements use a WeakMap
+    // keyed on the element; JSON-LD scripts get their textContent captured up
+    // front because we'll overwrite it in the atomic pass below.
     for (const u of units) {
       const el = refs.get(u.id);
       if (!el) continue;
       if (!cache.has(el)) cache.set(el, { original: el.innerHTML, translated: "" });
     }
-
-    const model = usePremium ? cfg.premiumModel : cfg.model;
-    const startMs = performance.now();
-
-    const response = await sendToBg({
-      kind: "bg.translate",
-      targetLang: cfg.targetLang,
-      model,
-      baseUrl: cfg.baseUrl,
-      apiKey: cfg.apiKey,
-      units: units.map((u) => ({ id: u.id, kind: u.kind, text: u.text })),
-    });
-
-    const elapsedMs = Math.round(performance.now() - startMs);
-
-    debug("bg-response", { ok: response.ok, kind: response.kind });
-
-    if (!response.ok || response.kind !== "bg.translateResult") {
-      const msg = response.kind === "error" ? response.message : "Translation failed.";
-      debug("bg-error", { msg });
-      showOverlayMessage(msg, "error");
-      await sleep(2400);
-      hideOverlay();
-      return;
+    for (const { script, original } of snapshotJsonLdOriginals(jsonLd)) {
+      if (!jsonLdCache.has(script)) {
+        jsonLdCache.set(script, { original, translated: "" });
+      }
     }
 
-    const translations = new Map(response.translations.map((t) => [t.id, t.text]));
+    const model = usePremium ? cfg.premiumModel : cfg.model;
+    const modelTier = usePremium ? "premium" : "standard";
+    const startMs = performance.now();
+
+    const allUnits = [...units, ...jsonLd.units];
+    // Persistent-cache lookup keyed on the combined unit set so we don't
+    // skip JSON-LD translation on a cache hit.
+    const contentHash = await computeContentHash(allUnits);
+    const cacheKey = {
+      url: location.href,
+      contentHash,
+      targetLang: cfg.targetLang,
+      modelTier,
+    };
+    const cached = await getCached(cacheKey);
+
+    let translationList: { id: number; text: string }[];
+    let stats: NonNullable<TabStatus["lastStats"]>;
+
+    if (cached) {
+      debug("cache-hit", { units: allUnits.length });
+      translationList = cached;
+      stats = {
+        units: allUnits.length,
+        elapsedMs: Math.round(performance.now() - startMs),
+        inputTokens: 0,
+        outputTokens: 0,
+      };
+    } else {
+      const response = await sendToBg({
+        kind: "bg.translate",
+        targetLang: cfg.targetLang,
+        model,
+        baseUrl: cfg.baseUrl,
+        apiKey: cfg.apiKey,
+        units: allUnits.map((u) => ({ id: u.id, kind: u.kind, text: u.text })),
+      });
+
+      debug("bg-response", { ok: response.ok, kind: response.kind });
+
+      if (!response.ok || response.kind !== "bg.translateResult") {
+        const msg = response.kind === "error" ? response.message : "Translation failed.";
+        debug("bg-error", { msg });
+        showOverlayMessage(msg, "error");
+        await sleep(2400);
+        hideOverlay();
+        return;
+      }
+
+      translationList = response.translations;
+      stats = {
+        units: allUnits.length,
+        elapsedMs: Math.round(performance.now() - startMs),
+        inputTokens: response.stats.inputTokens,
+        outputTokens: response.stats.outputTokens,
+      };
+
+      // Fire-and-forget: persist for next visit. Don't block the swap.
+      void putCached(cacheKey, translationList).catch(() => {});
+    }
+
+    const elapsedMs = stats.elapsedMs;
+    const translations = new Map(translationList.map((t) => [t.id, t.text]));
 
     // Pre-compute everything BEFORE we touch the DOM, so the swap is atomic.
+    // The JSON-LD path uses a separate applier (no decodeText — JSON values
+    // are plain text, not HTML; running them through decodeText would
+    // entity-escape `<`, `>`, `&` and corrupt strings like "Tom & Jerry").
     const updates: { el: Element; html: string }[] = [];
     for (const u of units) {
       const t = translations.get(u.id);
@@ -165,22 +296,42 @@ async function translatePage(usePremium: boolean): Promise<void> {
       updates.push({ el, html });
     }
 
+    // Demux JSON-LD translations back out of the flat response.
+    const jsonLdTranslations = new Map<number, string>();
+    for (const u of jsonLd.units) {
+      const t = translations.get(u.id);
+      if (t !== undefined) jsonLdTranslations.set(u.id, t);
+    }
+
     await nextFrame();
+    // Atomic swap: DOM writes + JSON-LD writes happen in the same pass so the
+    // user never sees a half-translated page (the project's UX contract).
     for (const { el, html } of updates) {
       const entry = cache.get(el);
       if (entry) entry.translated = html;
       el.innerHTML = html;
+      // `lang` lets screen readers pronounce the swapped-in text correctly.
+      el.setAttribute("lang", targetLangCode);
       translatedElements.add(el);
     }
+    applyJsonLdTranslations(jsonLd, jsonLdTranslations);
+    // Capture each rewritten script's new textContent so the toggle can flip
+    // back to translated state after a "show original".
+    for (const script of jsonLd.scripts.keys()) {
+      const entry = jsonLdCache.get(script);
+      if (entry) entry.translated = script.textContent ?? "";
+    }
     pageState = "translated";
-    lastStats = {
-      units: units.length,
+    if (cfg.hoverPeek) attachAllPeeks();
+    lastStats = stats;
+    debug("done", {
+      domUnits: units.length,
+      jsonLdUnits: jsonLd.units.length,
       elapsedMs,
-      inputTokens: response.stats.inputTokens,
-      outputTokens: response.stats.outputTokens,
-    };
-    debug("done", { units: units.length, elapsedMs, applied: updates.length });
+      applied: updates.length + jsonLdTranslations.size,
+    });
 
+    announce(`Page translated to ${cfg.targetLang}`);
     hideOverlay();
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -215,7 +366,30 @@ function showState(s: "original" | "translated"): void {
     if (s === "original") el.innerHTML = entry.original;
     else el.innerHTML = entry.translated;
   }
+  // Mirror the toggle on JSON-LD scripts. Scripts that were captured but had
+  // no translatable fields (e.g. an Organization-only block) still appear in
+  // the cache but their `translated` is empty — skip those.
+  for (const [script, entry] of jsonLdCache) {
+    if (s === "original") script.textContent = entry.original;
+    else if (entry.translated) script.textContent = entry.translated;
+  }
   pageState = s;
+  // Peek would point at original-shown text, so detach on the way back.
+  if (s === "original") {
+    detachPeek(translatedElements);
+  } else {
+    void (async () => {
+      const cfg = await getRuntimeConfig();
+      if (cfg.hoverPeek) attachAllPeeks();
+    })();
+  }
+}
+
+function attachAllPeeks(): void {
+  for (const el of translatedElements) {
+    const entry = cache.get(el);
+    if (entry) attachPeek(el, entry.original);
+  }
 }
 
 // ---------- Overlay (lives in a Shadow DOM so the host page's CSS can't touch it) ----------
@@ -223,6 +397,7 @@ function showState(s: "original" | "translated"): void {
 let overlayHost: HTMLElement | null = null;
 let overlayRoot: HTMLElement | null = null;
 let overlayText: HTMLElement | null = null;
+let overlayLive: HTMLElement | null = null;
 
 function ensureOverlay(): HTMLElement {
   if (overlayRoot) return overlayRoot;
@@ -242,7 +417,11 @@ function ensureOverlay(): HTMLElement {
       display: flex; align-items: center; justify-content: center;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "SF Pro Text", Roboto, sans-serif;
       opacity: 0; pointer-events: none;
-      transition: opacity 220ms ease;
+    }
+    /* Reduced-motion users get an instant swap — no fade, no spinner spin. */
+    @media (prefers-reduced-motion: no-preference) {
+      .root { transition: opacity 220ms ease; }
+      .spinner { animation: spin 720ms linear infinite; }
     }
     .root.show { opacity: 1; pointer-events: auto; }
     .card {
@@ -256,12 +435,17 @@ function ensureOverlay(): HTMLElement {
       width: 18px; height: 18px;
       border: 2px solid rgba(0,0,0,0.10); border-top-color: #2563eb;
       border-radius: 50%;
-      animation: spin 720ms linear infinite;
       flex-shrink: 0;
     }
     .icon-error { color: #dc2626; font-size: 18px; line-height: 1; }
     .icon-info  { color: #2563eb; font-size: 18px; line-height: 1; }
     .text { font-weight: 500; line-height: 1.4; }
+    /* Visually hidden but accessible to screen readers. */
+    .live {
+      position: absolute; width: 1px; height: 1px;
+      padding: 0; margin: -1px; overflow: hidden;
+      clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+    }
     @keyframes spin { to { transform: rotate(360deg); } }
   `;
 
@@ -275,11 +459,28 @@ function ensureOverlay(): HTMLElement {
   text.className = "text";
   card.append(spinner, text);
   root.append(card);
-  shadow.append(style, root);
+
+  // ARIA live region — sits in the shadow root alongside the overlay so the
+  // host page's CSS can't suppress it. Visually hidden via `.live`. We push
+  // one announcement per translation pass (not per element) so screen-reader
+  // users hear "Page translated to Finnish" once, not 200 times.
+  const live = document.createElement("div");
+  live.className = "live";
+  live.setAttribute("role", "status");
+  live.setAttribute("aria-live", "polite");
+  live.setAttribute("aria-atomic", "true");
+
+  shadow.append(style, root, live);
 
   overlayRoot = root;
   overlayText = text;
+  overlayLive = live;
   return root;
+}
+
+function announce(message: string): void {
+  ensureOverlay();
+  if (overlayLive) overlayLive.textContent = message;
 }
 
 function setOverlayIcon(icon: "spinner" | "info" | "error"): void {
@@ -328,10 +529,12 @@ function sleep(ms: number): Promise<void> {
 
 // ---------- Test/automation hooks ----------
 //
-// `#bb-translate` in the URL → auto-translate after document_idle.
+// `#bb-translate` in the URL → auto-translate after DOMContentLoaded.
 // `document.dispatchEvent(new CustomEvent("borderbrowser:translate"))` from
 // page JS → trigger a translation cycle. Both are useful for driving the
 // extension from outside the popup (e.g. when iterating with a debugger).
+// `translatePage` itself awaits the DOM gate, so dispatching this event
+// before DOMContentLoaded is safe.
 
 document.addEventListener("borderbrowser:translate", (e: Event) => {
   const detail = (e as CustomEvent<{ usePremium?: boolean; targetLang?: string }>).detail;
@@ -397,8 +600,119 @@ const LANG_NAME_TO_CODE: Record<string, string> = {
 console.log("[BorderBrowser] content script loaded", {
   url: location.href,
   hash: location.hash,
+  topFrame: isTopFrame,
+  readyState: document.readyState,
 });
 
-if (location.hash.includes("bb-translate")) {
-  setTimeout(() => void translatePage(false), 800);
+/**
+ * Resolves once the DOM is parsed enough that `document.body` exists.
+ *
+ * The content script registers at `document_start` so we can prep state
+ * before paint. At that point the body is null and `extractFromDom` would
+ * explode. Every code path that touches the DOM funnels through this gate.
+ */
+function whenDomReady(): Promise<void> {
+  if (document.readyState === "interactive" || document.readyState === "complete") {
+    return Promise.resolve();
+  }
+  return new Promise((resolve) => {
+    document.addEventListener("DOMContentLoaded", () => resolve(), { once: true });
+  });
+}
+
+/**
+ * Snapshot of the `<head>` captured as soon as it's parsed.
+ */
+type HeadSnapshot = {
+  title: string;
+  metas: { name: string; content: string }[];
+  jsonLd: string[];
+};
+let headSnapshot: HeadSnapshot | null = null;
+
+function captureHead(): void {
+  if (headSnapshot) return;
+  const head = document.head;
+  if (!head) return;
+  const metas: { name: string; content: string }[] = [];
+  for (const m of head.querySelectorAll("meta")) {
+    const name = m.getAttribute("name") ?? m.getAttribute("property") ?? "";
+    const content = m.getAttribute("content") ?? "";
+    if (name && content) metas.push({ name, content });
+  }
+  const jsonLd: string[] = [];
+  for (const s of head.querySelectorAll('script[type="application/ld+json"]')) {
+    if (s.textContent) jsonLd.push(s.textContent);
+  }
+  headSnapshot = {
+    title: document.title,
+    metas,
+    jsonLd,
+  };
+  debug("head-captured", { title: headSnapshot.title, metas: metas.length, jsonLd: jsonLd.length });
+}
+
+// Surface frame context to the page so e2e harnesses can verify the script
+// is running in BOTH the parent and the iframe.
+document.dispatchEvent(
+  new CustomEvent("borderbrowser:frame-loaded", {
+    detail: {
+      topFrame: isTopFrame,
+      url: location.href,
+    },
+  }),
+);
+
+void whenDomReady().then(() => {
+  captureHead();
+  // Top-frame guard: an iframe sharing the parent's hash would otherwise
+  // double-fire its own translation cycle at load time.
+  if (isTopFrame && location.hash.includes("bb-translate")) {
+    setTimeout(() => void translatePage(false), 800);
+  }
+});
+
+// Auto-enable reading mode if this domain is in the user's saved list.
+void (async () => {
+  try {
+    const cfg = await getConfig();
+    const host = location.hostname;
+    if (host && cfg.readingModeDomains?.includes(host)) {
+      readingMode.enable();
+    }
+  } catch {
+    // chrome.storage may be unavailable in odd contexts; non-fatal.
+  }
+})();
+
+// Cross-origin parent → child translate stub. Page content never crosses
+// the frame boundary — only a control signal in, an ack out. We accept
+// messages from `window.parent` only.
+if (!isTopFrame) {
+  window.addEventListener("message", (event: MessageEvent) => {
+    if (event.source !== window.parent) return;
+    if (!isFrameTranslateRequest(event.data)) return;
+    const req = event.data;
+    void (async () => {
+      let ok = true;
+      let reason: string | undefined;
+      try {
+        if (req.lang) await setConfig({ targetLang: req.lang });
+        await translatePage(req.usePremium ?? false);
+      } catch (err) {
+        ok = false;
+        reason = err instanceof Error ? err.message : String(err);
+      }
+      const response: FrameTranslateResponse = {
+        type: "bb-translate-response",
+        v: BB_FRAME_MSG_VERSION,
+        requestId: req.requestId,
+        ok,
+        ...(reason ? { reason } : {}),
+      };
+      event.source?.postMessage(response, {
+        targetOrigin: event.origin,
+      });
+    })();
+  });
 }

@@ -26,7 +26,15 @@ export function extractFromDom(root: Element): LiveExtractResult {
 
     if (isSkip(tag)) return;
 
-    if (hasBlockDescendant(el)) {
+    // Pierce open shadow roots: walk shadow children first as a separate
+    // sub-tree, then continue with the host's light-DOM children. Closed shadow
+    // roots are inaccessible to scripts and gracefully skipped.
+    const shadow = openShadowRoot(el);
+    if (shadow) {
+      for (const child of Array.from(shadow.childNodes)) visit(child);
+    }
+
+    if (isContainer(el)) {
       for (const child of Array.from(el.childNodes)) visit(child);
       return;
     }
@@ -43,6 +51,18 @@ export function extractFromDom(root: Element): LiveExtractResult {
 
   for (const child of Array.from(root.childNodes)) visit(child);
   return { units, refs };
+}
+
+/**
+ * Return an element's shadow root if it is open, otherwise null.
+ *
+ * Closed shadow roots are intentionally inaccessible from outside scripts;
+ * `el.shadowRoot` is null for them, so we cannot walk into closed shadow trees.
+ */
+function openShadowRoot(el: Element): ShadowRoot | null {
+  const shadow = el.shadowRoot;
+  if (shadow && shadow.mode === "open") return shadow;
+  return null;
 }
 
 export function encodeFromLiveDom(el: Element): {
@@ -82,12 +102,20 @@ export function encodeFromLiveDom(el: Element): {
   return { text, placeholders };
 }
 
-function hasBlockDescendant(el: Element): boolean {
+/**
+ * `el` should be recursed into rather than emitted as a single unit when its
+ * subtree contains either a nested block element (the existing rule) or any
+ * descendant hosting an open shadow root. The shadow case is needed because
+ * an inline custom-element wrapper with no light children would otherwise be
+ * skipped, hiding any translatable text its shadow tree carries.
+ */
+function isContainer(el: Element): boolean {
   for (const child of Array.from(el.children)) {
     const tag = child.tagName.toLowerCase();
     if (isSkip(tag)) continue;
     if (isBlock(tag)) return true;
-    if (hasBlockDescendant(child)) return true;
+    if (openShadowRoot(child)) return true;
+    if (isContainer(child)) return true;
   }
   return false;
 }
