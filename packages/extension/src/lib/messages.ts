@@ -52,6 +52,7 @@ export type TabRequest =
   | { kind: "tab.showOriginal" }
   | { kind: "tab.showTranslated" }
   | { kind: "tab.toggleReadingMode"; enabled?: boolean }
+  | { kind: "tab.toggleOriginal" }
   | { kind: "tab.getStatus" };
 
 export type TabStatus = {

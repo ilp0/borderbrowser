@@ -1,6 +1,10 @@
 /**
  * Database access layer (Postgres via Neon's HTTP driver — works on Cloudflare
  * Workers without TCP). All money columns are BIGINT microdollars.
+ *
+ * The `db()` factory is swappable: self-hosted Node deployments call
+ * `setDbFactory()` from `server.node.ts` to plug in a vanilla `pg`-backed
+ * client, since Neon's HTTP driver only talks to Neon endpoints.
  */
 import { neon, type NeonQueryFunction } from "@neondatabase/serverless";
 import type { Usage } from "./pricing.ts";
@@ -17,8 +21,15 @@ export type ApiKeyRow = {
   revoked: boolean;
 };
 
+let dbFactory: (url: string) => Db = (url) => neon(url);
+
+/** Replace the default Neon-HTTP factory. Used by the Node self-host entrypoint. */
+export function setDbFactory(factory: (url: string) => Db): void {
+  dbFactory = factory;
+}
+
 export function db(databaseUrl: string): Db {
-  return neon(databaseUrl);
+  return dbFactory(databaseUrl);
 }
 
 export async function findKeyByHash(sql: Db, hash: string): Promise<ApiKeyRow | null> {
